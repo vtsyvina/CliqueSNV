@@ -5,6 +5,7 @@ Download jar from <a href="https://drive.google.com/open?id=1wAC57YARnVKi5uGAtPQ
 
 ## Stable releases
 1.4.1 - <a href="https://drive.google.com/file/d/18rVFT6fSSBdvHyPw0aibmlp3CfOsLV3K/view?usp=sharing">12 February 2018</a>
+
 1.4.10 - <a href="https://drive.google.com/open?id=1z6iXyCYUIJm2zpggFGX5yIR5SzslqKvT">20 July 2019</a>
 
 ## Parameters
