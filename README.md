@@ -5,6 +5,7 @@ Download jar from <a href="https://drive.google.com/open?id=1wAC57YARnVKi5uGAtPQ
 
 ## Stable releases
 1.4.1 - <a href="https://drive.google.com/file/d/18rVFT6fSSBdvHyPw0aibmlp3CfOsLV3K/view?usp=sharing">12 February 2018</a>
+1.4.10 - <a href="https://drive.google.com/open?id=1z6iXyCYUIJm2zpggFGX5yIR5SzslqKvT">20 July 2019</a>
 
 ## Parameters
 There are several available parameters:
@@ -31,7 +32,9 @@ There are several available parameters:
 - ``-cm`` - cliques merging algorithm. Two values: 'accurate', 'fast'. Default is 'accurate'. Accurate may lead to exponential explosion of cliques number.
 That's why with large number of SNPs it may be useful to use fast polynomial algorithm with lower quality.
 - ``-threads`` - number of threads for parallel tasks. By default program will use all available processors' cores.
-
+- ``-os`` - output start position. If provided will cut the output from 0 to given position in haplotypes, variant calling
+- ``-oe`` - output end position. If provided will cut the output from given position till the end in haplotypes, variant calling. 
+For example, ``-os 100 -oe 700`` will output haplotypes only for positions [100, 700] or include SNPs in variant calling only inside this range
 ### t and tf parameters choice
 These two parameters are significant, since they put a border in trade-off between precision and recall. By default they are set to detect very rare variants (<0.2%). If the data is known to be noisy(have a lot of read errors) and only variants with frequency >1% are of interest, then **-tf** should be around **0.01**, **-t** is optional and based on coverage.
 
@@ -134,6 +137,9 @@ Where name is just an index + haplotype frequency
 
 1.4.9
 - Fix bug with exception for long reads in PacBio
+
+1.4.10
+- Add "-os", "-oe" parameters to control output range; small fixes
 
 ## Any questions
 With any questions. please, contact: vyacheslav.tsivina@gmail.com
