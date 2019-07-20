@@ -1,7 +1,7 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/open?id=1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m">here</a> (latest ver 1.4.9, January, 2019)
+Download jar from <a href="https://drive.google.com/open?id=1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m">here</a> (latest ver 1.4.10, July, 2019)
 
 ## Stable releases
 1.4.1 - <a href="https://drive.google.com/file/d/18rVFT6fSSBdvHyPw0aibmlp3CfOsLV3K/view?usp=sharing">12 February 2018</a>
