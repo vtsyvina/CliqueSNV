@@ -61,6 +61,7 @@ There are two example datasets:
 How to run:
 
 ```java -jar clique-snv.jar -m snv-pacbio -log -in data\PacBio_reads\reads.sam```
+
 ```java -jar clique-snv.jar -m snv-illumina -in data\Illumina_reads\reads.sam```
 
 ## Output
