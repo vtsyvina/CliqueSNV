@@ -51,6 +51,18 @@ These two parameters are significant, since they put a border in trade-off betwe
 
 ``java -jar clique-snv.jar -m snv-illumina-vc -in /path/to/data/r.sam -outDir vcf_out/ -t 10 -tf 0.00034 -threads 8 -log``
 
+### Example datasets
+There are two example datasets:
+- PacBio flu reads with 10 haplotypes
+- Illumina flu reads with 2 haplotypes
+
+``data/flu_ref.fasta`` contains those haplotypes as ground truth
+
+How to run:
+
+```java -jar clique-snv.jar -m snv-pacbio -log -in data\PacBio_reads\reads.sam```
+```java -jar clique-snv.jar -m snv-illumina -in data\Illumina_reads\reads.sam```
+
 ## Output
 **For default quasispecies problem** As output CliqueSNV has two files: human readable and fasta. Humanreadable file has the following form:
 ```
