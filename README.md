@@ -6,7 +6,7 @@ Download jar from <a href="https://drive.google.com/open?id=1wAC57YARnVKi5uGAtPQ
 ## Stable releases
 1.4.1 - <a href="https://drive.google.com/file/d/18rVFT6fSSBdvHyPw0aibmlp3CfOsLV3K/view?usp=sharing">12 February 2018</a>
 
-1.4.10 - <a href="https://drive.google.com/open?id=1z6iXyCYUIJm2zpggFGX5yIR5SzslqKvT">20 July 2019</a>
+1.4.11 - <a href="https://drive.google.com/open?id=1Qwg6g9_lKlqY9zrH37f-F1QF32fWOmYt">2 January 2020</a>
 
 ## Parameters
 There are several available parameters:
@@ -154,6 +154,9 @@ Where name is just an index + haplotype frequency
 
 1.4.10
 - Add "-os", "-oe" parameters to control output range; small fixes
+
+1.4.11
+- Fix missing frequencies in output
 
 ## Any questions
 With any questions. please, contact: vyacheslav.tsivina@gmail.com
