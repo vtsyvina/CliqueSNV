@@ -3,6 +3,9 @@
 
 Download jar from <a href="https://drive.google.com/open?id=1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m">here</a> (latest ver 1.4.11, January, 2020)
 
+## Citation
+Please cite preprint at BioRxiv: https://www.biorxiv.org/content/10.1101/264242v1
+
 ## Stable releases
 1.4.1 - <a href="https://drive.google.com/file/d/18rVFT6fSSBdvHyPw0aibmlp3CfOsLV3K/view?usp=sharing">12 February 2018</a>
 
