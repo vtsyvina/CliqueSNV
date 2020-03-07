@@ -1,7 +1,7 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/open?id=1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m">here</a> (latest ver 1.4.11, January, 2020)
+Download jar from <a href="https://drive.google.com/open?id=1oajLIn7NqTHnt8_8RhYf_EbzgYqY23ig">here</a> (latest ver 1.5.0, March, 2020)
 
 ## Citation
 Please cite preprint at BioRxiv: https://www.biorxiv.org/content/10.1101/264242v1
@@ -30,8 +30,8 @@ There are several available parameters:
   NACGTNNN
   ```
 - ``-outDir`` output directory. `snv_output/` is default value
-- ``-t`` - minimum threshold for O22 value. Default is 10 (only for Illumina reads)
-- ``-tf`` - minimum threshold for 022 frequency relative to the reads' coverage. Default value os 0.000_333(10 out of 30 000)
+- ``-t`` - minimum threshold for O22 value. Default is 100 (only for Illumina reads)
+- ``-tf`` - minimum threshold for 022 frequency relative to the reads' coverage. Default value os 0.05. For more sensitive algorithm work decrease this parameter (may significantly increase runtime for diverse samples). **Note** Haplotypes with frequency <tf won't get into output
 - ``-log`` - some log data will be in console with this flag(no value needed)
 - ``-cm`` - cliques merging algorithm. Two values: 'accurate', 'fast'. Default is 'accurate'. Accurate may lead to exponential explosion of cliques number.
 That's why with large number of SNPs it may be useful to use fast polynomial algorithm with lower quality.
@@ -40,7 +40,7 @@ That's why with large number of SNPs it may be useful to use fast polynomial alg
 - ``-oe`` - output end position. If provided will cut the output from given position till the end in haplotypes, variant calling. 
 For example, ``-os 100 -oe 700`` will output haplotypes only for positions [100, 700] or include SNPs in variant calling only inside this range
 ### t and tf parameters choice
-These two parameters are significant, since they put a border in trade-off between precision and recall. By default they are set to detect very rare variants (<0.2%). If the data is known to be noisy(have a lot of read errors) and only variants with frequency >1% are of interest, then **-tf** should be around **0.01**, **-t** is optional and based on coverage.
+These two parameters are significant, since they put a border in trade-off between precision and recall. By default they are set to detect moderate haplotypes (>5%). If it is know that data is not very noisy and variants with frequency >1% are of interest, then **-tf** should be around **0.01**, **-t** is optional and based on coverage.
 
 ### Usage example
 
@@ -161,5 +161,12 @@ Where name is just an index + haplotype frequency
 1.4.11
 - Fix missing frequencies in output
 
+1.5.0
+- Change of -tf parameter. Now default value is 5% and all haplotypes with frequency <tf value will be omitted
+- Parallelization for several parts of algorithm that could take time for a big datasets(>2M reads) before. Should improve
+the runtime on powerful machines
+- Better handling of inputs with diverse quasispecies population(when pair-wise distances are >25-30 SNPs and many haplotypes within the sample)
+- Output settings to console and to output file
+
 ## Any questions
-With any questions. please, contact: vyacheslav.tsivina@gmail.com
+With any questions. please, contact: v.tsyvina@gmail.com
