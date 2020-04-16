@@ -1,7 +1,7 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/open?id=1oajLIn7NqTHnt8_8RhYf_EbzgYqY23ig">here</a> (latest ver 1.5.0, March, 2020)
+Download jar from <a href="https://drive.google.com/open?id=129uFslfT6UPjfFmq--_kgEgDVkUCN--A">here</a> (latest ver 1.5.1, April, 2020)
 
 ## Citation
 Please cite preprint at BioRxiv: https://www.biorxiv.org/content/10.1101/264242v1
