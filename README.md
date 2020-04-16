@@ -94,10 +94,10 @@ SNV got 10 haplotypes
 
 Fasta file will be:
 ```
->0_fr_0.5820184401895632
+>1_fr_0.5820184401895632
 CCACAGCACGCAGATTGGTGGAATAAGGATGGTAAACATCCTTAGGCAGAACCC....
 
->1_fr_0.24979076133465727
+>2_fr_0.24979076133465727
 CCACAGCACGCAGATTGGTGGAATAAGGATGGTAAACATCCTTAGGCAGAACCC...
  ...
 ```
@@ -170,6 +170,9 @@ Where name is just an index + haplotype frequency
 the runtime on powerful machines
 - Better handling of inputs with diverse quasispecies population(when pair-wise distances are >25-30 SNPs and many haplotypes within the sample)
 - Output settings to console and to output file
+
+1.5.1
+- Start haplotypes from 1 in fasta output
 
 ## Any questions
 With any questions. please, contact: v.tsyvina@gmail.com
