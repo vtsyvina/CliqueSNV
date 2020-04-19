@@ -1,7 +1,7 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/open?id=129uFslfT6UPjfFmq--_kgEgDVkUCN--A">here</a> (latest ver 1.5.1, April, 2020)
+Download jar from <a href="https://drive.google.com/file/d/1ud3HkYB40KUMPBlK9OVFt9kGYCeds7BW/view?usp=sharing">here</a> (latest ver 1.5.2, April 2020)
 
 ## Citation
 Please cite preprint at BioRxiv: https://www.biorxiv.org/content/10.1101/264242v1
@@ -32,16 +32,24 @@ There are several available parameters:
   >read2
   NACGTNNN
   ```
-- ``-outDir`` output directory. `snv_output/` is default value
+
 - ``-t`` - minimum threshold for O22 value. Default is 100 (only for Illumina reads)
 - ``-tf`` - minimum threshold for 022 frequency relative to the reads' coverage. Default value os 0.05. For more sensitive algorithm work decrease this parameter (may significantly increase runtime for diverse samples). **Note** Haplotypes with frequency <tf won't get into output
 - ``-log`` - some log data will be in console with this flag(no value needed)
 - ``-cm`` - cliques merging algorithm. Two values: 'accurate', 'fast'. Default is 'accurate'. Accurate may lead to exponential explosion of cliques number.
 That's why with large number of SNPs it may be useful to use fast polynomial algorithm with lower quality.
 - ``-threads`` - number of threads for parallel tasks. By default program will use all available processors' cores.
+
+### Output parameters
+- ``-outDir`` output directory. `snv_output/` is default value
+- ``-fdf`` fasta defline format. There are two options available(default is "short"):
+    - ``short`` corresponds to ``>{id}_fr_{frequency}`` (e.g. ``>1_fr_0.5820184401895632``)
+    - ``extended`` corresponds to ``>{sample_name}_{id}_{frequency}`` (e.g. ``>HIV_sample_1_0.92``). By default, the precision for 
+    frequency is 2, it can be customized by adding the number to extended. For example, ``-fdf extended4`` will output ``>HIV_sample_1_0.9239``.
 - ``-os`` - output start position. If provided will cut the output from 0 to given position in haplotypes, variant calling
 - ``-oe`` - output end position. If provided will cut the output from given position till the end in haplotypes, variant calling. 
 For example, ``-os 100 -oe 700`` will output haplotypes only for positions [100, 700] or include SNPs in variant calling only inside this range
+
 ### t and tf parameters choice
 These two parameters are significant, since they put a border in trade-off between precision and recall. By default they are set to detect moderate haplotypes (>5%). If it is know that data is not very noisy and variants with frequency >1% are of interest, then **-tf** should be around **0.01**, **-t** is optional and based on coverage.
 
@@ -173,6 +181,9 @@ the runtime on powerful machines
 
 1.5.1
 - Start haplotypes from 1 in fasta output
+
+1.5.2
+- New -fdf parameter to change output fasta defline format
 
 ## Any questions
 With any questions. please, contact: v.tsyvina@gmail.com
