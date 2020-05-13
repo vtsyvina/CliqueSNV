@@ -1,7 +1,7 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/file/d/1ud3HkYB40KUMPBlK9OVFt9kGYCeds7BW/view?usp=sharing">here</a> (latest ver 1.5.2, April 2020)
+Download jar from <a href="https://drive.google.com/open?id=1MZ-J0O6yxSoF9OZxD6DT6ChazvOZsUa-">here</a> (latest ver 1.5.3, May 2020)
 
 ## Citation
 Please cite preprint at BioRxiv: https://www.biorxiv.org/content/10.1101/264242v1
@@ -20,7 +20,7 @@ There are several available parameters:
   - 'snv-illumina-vc' - run Variant Calling with CliqueSNV with Illumina input(.vcf file is output)
   - 'consensus-illumina' - just a utility method to calculate consensus string base of input sam file for Illumina reads
   - 'consensus-pacbio' - just a utility method to calculate consensus string base of input sam file for Illumina reads
- 
+  
 - ``-in`` input path. If not specified default sam files from ``data\PacBio_reads`` ro ``data\Illumina_reads`` folder will be used.
   It can be relative as well as absolute path. Illumina requires .sam file for both haplotyping and VC, PacBio can read
   .sam and .fas for haplotyping and .sam for VC. **Note!** if you use .fas for PacBio input, each read should be the same length.
@@ -50,8 +50,10 @@ That's why with large number of SNPs it may be useful to use fast polynomial alg
 - ``-oe`` - output end position. If provided will cut the output from given position till the end in haplotypes, variant calling. 
 For example, ``-os 100 -oe 700`` will output haplotypes only for positions [100, 700] or include SNPs in variant calling only inside this range
 
+
 ### t and tf parameters choice
-These two parameters are significant, since they put a border in trade-off between precision and recall. By default they are set to detect moderate haplotypes (>5%). If it is know that data is not very noisy and variants with frequency >1% are of interest, then **-tf** should be around **0.01**, **-t** is optional and based on coverage.
+These two parameters are significant, since they put a border in trade-off between precision and recall. 
+By default, they are set to detect moderate haplotypes (>5%). If it is know that data is not very noisy and variants with frequency >1% are of interest, then **-tf** should be around **0.01**, **-t** is optional and based on coverage.
 
 ### Usage example
 
@@ -184,6 +186,9 @@ the runtime on powerful machines
 
 1.5.2
 - New -fdf parameter to change output fasta defline format
+
+1.5.3
+- Improved handling of SNPs graph for cliques search (should significantly improve performance on long references >5000 long)
 
 ## Any questions
 With any questions. please, contact: v.tsyvina@gmail.com
