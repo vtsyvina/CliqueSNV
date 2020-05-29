@@ -80,6 +80,11 @@ How to run:
 
 ```java -jar clique-snv.jar -m snv-illumina -in data\Illumina_reads\reads.sam```
 
+### Memory usage
+From our experience the tool consumes around 10Gb(upper bound estimate) of RAM per 1,000,000 input reads(may vary based on a number of factors). To change standard JVM heap size limit specify -Xmx flag. Example with 50Gb:
+
+```java -Xmx50G -jar clique-snv.jar -m snv-illumina -in data\Illumina_reads\reads.sam```
+
 ## Output
 **For default quasispecies problem** As output CliqueSNV has two files: human readable and fasta. Humanreadable file has the following form:
 ```
