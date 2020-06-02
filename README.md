@@ -11,6 +11,8 @@ Please cite preprint at BioRxiv: https://www.biorxiv.org/content/10.1101/264242v
 
 1.4.11 - <a href="https://drive.google.com/open?id=1Qwg6g9_lKlqY9zrH37f-F1QF32fWOmYt">2 January 2020</a>
 
+1.5.3 - <a href="https://drive.google.com/file/d/1MZ-J0O6yxSoF9OZxD6DT6ChazvOZsUa-"> 1 June 2020</a>
+
 ## Parameters
 There are several available parameters:
 - ``-m`` mandatory parameter to specify method that you want to run. There are 4 posible values:
@@ -33,7 +35,7 @@ There are several available parameters:
   NACGTNNN
   ```
 
-- ``-t`` - minimum threshold for O22 value. Default is 100 (only for Illumina reads)
+- ``-t`` - minimum threshold for O22 value. Default is 10
 - ``-tf`` - minimum threshold for 022 frequency relative to the reads' coverage. Default value os 0.05. For more sensitive algorithm work decrease this parameter (may significantly increase runtime for diverse samples). **Note** Haplotypes with frequency <tf won't get into output
 - ``-log`` - some log data will be in console with this flag(no value needed)
 - ``-cm`` - cliques merging algorithm. Two values: 'accurate', 'fast'. Default is 'accurate'. Accurate may lead to exponential explosion of cliques number.
