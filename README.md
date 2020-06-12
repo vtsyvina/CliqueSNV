@@ -40,6 +40,7 @@ There are several available parameters:
 - ``-log`` - some log data will be in console with this flag(no value needed)
 - ``-cm`` - cliques merging algorithm. Two values: 'accurate', 'fast'. Default is 'accurate'. Accurate may lead to exponential explosion of cliques number.
 That's why with large number of SNPs it may be useful to use fast polynomial algorithm with lower quality.
+- ``-ignoreDeletion`` - a flag to ignore deletions as potential SNVs for Illumina. For PacBio deletions are always ignored. 
 - ``-threads`` - number of threads for parallel tasks. By default program will use all available processors' cores.
 
 ### Output parameters
