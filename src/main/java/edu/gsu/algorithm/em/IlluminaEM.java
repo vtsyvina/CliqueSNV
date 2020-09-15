@@ -50,7 +50,8 @@ public class IlluminaEM extends AbstractEM {
                     if (misses >= MAX_MISSES){
                         misses = MAX_MISSES-1;
                     }
-                    h[finalF][s] = pre[read.l.length() + read.r.length()][misses];
+                    int length = Math.min(MAX_READ_LENGTH-1, read.l.length() + read.r.length());
+                    h[finalF][s] = pre[length][misses];
                 }
                 return true;
             });

@@ -94,8 +94,14 @@ public class SAM4WebLogo {
                 parse(samReader.getFileHeader().getSequenceDictionary().getSequences().get(0).getSequenceName() + ":0-" + samReader.getFileHeader().getSequenceDictionary().getSequences().get(0).getSequenceLength());
     }
 
+    /**
+     * Gets the string value of the read
+     * @param rec
+     * @param cutRead if false the read will be filled with - in the beginning and the end to match the reference length, otherwise it will be just read itself
+     * @return
+     */
     public String printRead(
-            final SAMRecord rec
+            final SAMRecord rec, boolean cutRead
     ) {
 
         final Cigar cigar = rec.getCigar();
@@ -108,18 +114,20 @@ public class SAM4WebLogo {
 
         final Predicate<Integer> inInterval = IDX -> IDX >= interval.getStart() && IDX <= interval.getEnd();
 
-        final StringBuilder seq = new StringBuilder(interval.length());
+        final StringBuilder seq = cutRead ? new StringBuilder() : new StringBuilder(interval.length());
 
-        int refPos = Math.min(
+        int refPos = cutRead ? rec.getUnclippedStart() : Math.min(
                 interval.getStart(),
                 rec.getUnclippedStart()
         );
 
-        while (refPos < rec.getUnclippedStart()) {
-            if (inInterval.test(refPos)) {
-                seq.append('-');
+        if (!cutRead) {
+            while (refPos < rec.getUnclippedStart()) {
+                if (inInterval.test(refPos)) {
+                    seq.append('-');
+                }
+                ++refPos;
             }
-            ++refPos;
         }
 
         int readPos = 0;
@@ -182,11 +190,24 @@ public class SAM4WebLogo {
                     throw new IllegalStateException("Not handled. op:" + op);
             }
         }
-
-        while(refPos<= interval.getEnd())
-        {
-            seq.append('-');
-            refPos++;
+        if (cutRead) {
+            // delete - from the beginning and end
+            int c = 0;
+            while (c < seq.length() && seq.charAt(c) == '-') {
+                c++;
+            }
+            seq.delete(0, c);
+            c = seq.length() - 1;
+            while (c > 0 && seq.charAt(c) == '-') {
+                c--;
+            }
+            c++;
+            seq.delete(c, seq.length());
+        } else {
+            while (refPos <= interval.getEnd()) {
+                seq.append('-');
+                refPos++;
+            }
         }
         return seq.toString();
     }

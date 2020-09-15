@@ -43,8 +43,10 @@ public class SNVResultContainer {
         this.clusterString = clusterString;
     }
 
-    public SNVResultContainer(String clusterString,  Clique haplotypeClique, String haplotype, List<PairEndRead> illuminaCluster, double frequency) {
+    public SNVResultContainer(String clusterString,  Clique haplotypeClique, Clique sourceClique, String haplotype, List<PairEndRead> illuminaCluster,Map<Integer, String> pacBioCluster,  double frequency) {
         this.illuminaCluster = illuminaCluster;
+        this.pacBioCluster = pacBioCluster;
+        this.sourceClique = sourceClique;
         this.haploClique = haplotypeClique;
         this.haplotype = haplotype;
         this.clusterString = clusterString;
@@ -52,7 +54,7 @@ public class SNVResultContainer {
     }
 
     public SNVResultContainer copy(){
-        return new SNVResultContainer(clusterString, haploClique, haplotype, illuminaCluster, frequency);
+        return new SNVResultContainer(clusterString, haploClique, sourceClique, haplotype, illuminaCluster, pacBioCluster, frequency);
     }
 
     @Override

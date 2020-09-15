@@ -170,6 +170,9 @@ public class AlgorithmUtils {
             return 0;
         }
         int si = AlgorithmUtils.binarySearch(y, x[0]);
+        if(x[x.length-1] < y[0]){
+            return 0;
+        }
         int fi = 0;
         int firstEnd = x.length;
         int secondEnd = y.length;

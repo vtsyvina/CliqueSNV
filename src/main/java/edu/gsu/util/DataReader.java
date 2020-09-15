@@ -85,8 +85,9 @@ public class DataReader {
         SamReader open = SamReaderFactory.make().open(file);
         SAM4WebLogo sam4WebLogo = new SAM4WebLogo(open);
         List<String> tmp = new ArrayList<>();
+        List<String> readNames = new ArrayList<>();
         for (SAMRecord anOpen : open) {
-            StringBuilder str = new StringBuilder(sam4WebLogo.printRead(anOpen));
+            StringBuilder str = new StringBuilder(sam4WebLogo.printRead(anOpen, false));
             int i = 0;
             while (i < str.length() && str.charAt(i) == '-') {
                 str.setCharAt(i++, 'N');
@@ -98,8 +99,9 @@ public class DataReader {
             //TODO think about it. getAlignmentStart is 1 for some reason everytime
             str.delete(0, 1);
             tmp.add(str.toString());
+            readNames.add(anOpen.getReadName());
         }
-        return new Sample(split[split.length - 2], tmp.toArray(new String[0]));
+        return new Sample(split[split.length - 2], tmp.toArray(new String[0]), readNames.toArray(new String[0]));
     }
 
     public static IlluminaSNVSample getIlluminaPairedReads(File file) {
@@ -191,8 +193,8 @@ public class DataReader {
             List<PairEndRead> pairedReads = new ArrayList<>(readsSet.size());
             readsSet.forEach((key, value) -> {
                 if (value.size() == 1) {
-                    String s = sam4WebLogo.printRead(value.get(0));
-                    s = cutRead(s, value.get(0).getAlignmentStart());//end.matcher(begin.matcher(s).replaceAll("")).replaceAll("");
+                    String s = sam4WebLogo.printRead(value.get(0), true);
+                    //s = cutRead(s, value.get(0).getAlignmentStart());//end.matcher(begin.matcher(s).replaceAll("")).replaceAll("");
                     pairedReads.add(new PairEndRead(s,
                             "",
                             value.get(0).getAlignmentStart() - 1,
@@ -202,8 +204,8 @@ public class DataReader {
                     for (int i = 0; i < value.size(); i++) {
                         //if read is unpaired
                         if (!value.get(i).getReadPairedFlag()) {
-                            String s = sam4WebLogo.printRead(value.get(0));
-                            s = cutRead(s, value.get(0).getAlignmentStart());//end.matcher(begin.matcher(s).replaceAll("")).replaceAll("");
+                            String s = sam4WebLogo.printRead(value.get(0), true);
+                            //s = cutRead(s, value.get(0).getAlignmentStart());//end.matcher(begin.matcher(s).replaceAll("")).replaceAll("");
                             pairedReads.add(new PairEndRead(s,
                                     "",
                                     value.get(0).getAlignmentStart() - 1,
@@ -215,18 +217,18 @@ public class DataReader {
                             if (value.get(i).getMateAlignmentStart() == value.get(j).getAlignmentStart()
                                     && value.get(i).getAlignmentStart() <= value.get(j).getAlignmentStart()) {
                                 if (i == j) {
-                                    String s = sam4WebLogo.printRead(value.get(i));
-                                    s = cutRead(s, value.get(i).getAlignmentStart());//end.matcher(begin.matcher(s).replaceAll("")).replaceAll("");
+                                    String s = sam4WebLogo.printRead(value.get(i), true);
+                                    //s = cutRead(s, value.get(i).getAlignmentStart());//end.matcher(begin.matcher(s).replaceAll("")).replaceAll("");
                                     pairedReads.add(new PairEndRead(s,
                                             "",
                                             value.get(i).getAlignmentStart() - 1,
                                             -1, key)
                                     );
                                 } else {
-                                    String s = sam4WebLogo.printRead(value.get(i));
-                                    s =  cutRead(s, value.get(i).getAlignmentStart());
-                                    String s2 = sam4WebLogo.printRead(value.get(j));
-                                    s2 = cutRead(s2, value.get(j).getAlignmentStart());//end.matcher(begin.matcher(s2).replaceAll("")).replaceAll("");
+                                    String s = sam4WebLogo.printRead(value.get(i), true);
+                                    //s =  cutRead(s, value.get(i).getAlignmentStart());
+                                    String s2 = sam4WebLogo.printRead(value.get(j), true);
+                                    //s2 = cutRead(s2, value.get(j).getAlignmentStart());//end.matcher(begin.matcher(s2).replaceAll("")).replaceAll("");
                                     pairedReads.add(new PairEndRead(s,
                                             s2,
                                             value.get(i).getAlignmentStart() - 1,
@@ -248,17 +250,17 @@ public class DataReader {
         /**
          * Read comes with leading and ending '-', we need to cut them
          */
-        private String cutRead(String read, int alignmentStart){
-            read = read.substring(alignmentStart);
-            int end = read.length()-1;
-            for (int i = read.length()-1; i > 0; i--) {
-                if (read.charAt(i) != '-'){
-                    end = i+1;
-                    break;
-                }
-            }
-            return read.substring(0,end);
-        }
+//        private String cutRead(String read, int alignmentStart){
+//            read = read.substring(alignmentStart);
+//            int end = read.length()-1;
+//            for (int i = read.length()-1; i > 0; i--) {
+//                if (read.charAt(i) != '-'){
+//                    end = i+1;
+//                    break;
+//                }
+//            }
+//            return read.substring(0,end);
+//        }
 
     }
 }

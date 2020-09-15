@@ -31,10 +31,17 @@ import java.util.stream.Collectors;
 public class SNVIlluminaMethod extends AbstractSNV {
     public static final int minorCount = al.length() - 2;
     public int MAX_EDGES_NUMBER;
-    private long[][] commonReads;
+    private int[][] commonReads;
     private boolean maxEdgesLimitReached = false;
     // we assume them to be sorted
     private List<FindIlluminaEdgesParallelTask.EdgeSummary> noLimitEdges;
+
+//    private Sample coronaHaplotypes;
+//    private Map<String, Integer> knownHits = new HashMap<>();
+//
+//    public void setCoronaHaplotypes(Sample coronaHaplotypes) {
+//        this.coronaHaplotypes = coronaHaplotypes;
+//    }
 
     @Override
     protected Technology technology() {
@@ -111,6 +118,10 @@ public class SNVIlluminaMethod extends AbstractSNV {
         //getMergedCluques first time to get cliques
         List<Set<Integer>> adjacencyList = getUnprocessedSnpsAdjecencyList();
         adjacencyList = rotateFrequentMinors(adjacencyList);
+//        if (Start.coronaHaplotypes != null) {
+//            log("Not isolated vertices " + adjacencyList.stream().filter(l -> !l.isEmpty()).count());
+//            addEdgesFromKnowsHaplotypes(adjacencyList);
+//        }
         Set<Set<Integer>> cliques = getResolvedCliques(adjacencyList);
 
         log("Found cliques: " + cliques.size());
@@ -134,6 +145,11 @@ public class SNVIlluminaMethod extends AbstractSNV {
         for (int i = 0; i < edgesLimit.length; i++) {
             log = false;
             adjacencyList = getTopNEdgesAdjacencyList(edgesLimit[i]);
+//            log("got edges for "+edgesLimit[i]);
+//            if (Start.coronaHaplotypes != null) {
+//                log("Not isolated vertices " + adjacencyList.stream().filter(l -> !l.isEmpty()).count());
+//                addEdgesFromKnowsHaplotypes(adjacencyList);
+//            }
             cliques = getResolvedCliques(adjacencyList);
             log = true;
             List<SNVResultContainer> haplotypes = processCliques(cliques);
@@ -448,7 +464,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
         if (o22 / (MAX_READ_ERROR * o11 + (1 - MAX_READ_ERROR) * (o12 + o21)) < MAX_READ_ERROR) {
             return;
         }
-        log(String.format("%d %d %c %c m1=%d m2=%d hits=%d p012=%.3e reads=%d %d %d %d %d",
+        log(String.format("%d %d %c %c mi1=%d ma1=%d mi2=%d ma2=%d hits=%d p012=%.3e reads=%d %d %d %d %d",
                 first, second, m1, m2, l, struct.rowMinors[j].length, hits[j], 0.0, reads, o11, o12, o21, o22));
         //correlationMap.put(getCorrelationKey(first, second, m1, m2), new CorrelationContainer(o11, o12, o21, o22, reads));
         adjacencyNode.add(j);
@@ -456,7 +472,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
 
     private void computeCommonReads() {
         if (commonReads == null) {
-            commonReads = new long[sample.referenceLength][sample.referenceLength];
+            commonReads = new int[sample.referenceLength][sample.referenceLength];
             log("Common reads matrix calculation");
 
             int cores = Start.threadsNumber();
@@ -487,7 +503,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
     public String consensus() {
         if (consensus == null) {
             consensus = Utils.consensus(profile(), al);
-            log(" Reference length = "+consensus.length());
+            log(" Reference length = " + consensus.length());
         }
         return consensus;
     }
@@ -722,9 +738,10 @@ public class SNVIlluminaMethod extends AbstractSNV {
             tasks.add(() -> {
                 int min = 1_000_000;
                 List<Integer> minI = new ArrayList<>();
+                // for each clique find the distance and overlap with the read
                 for (int i = 0; i < allCliquesCharacters.size(); i++) {
                     int d = 0;
-                    int coincidences = 0;
+                    int coincidences = 0; //overlap in positions
                     boolean isConsensusClique = i == finalConsensusCliqueIndex;
                     String c = allCliquesCharacters.get(i);
                     for (int j = 0; j < allPositionsInCliques.size(); j++) {
@@ -750,11 +767,11 @@ public class SNVIlluminaMethod extends AbstractSNV {
                             }
                         }
                     }
-                    if (coincidences != d && d < min) {
+                    if (coincidences != d && d < min && coincidences > 0) {
                         min = d;
                         minI = new ArrayList<>();
                     }
-                    if (d == min) {
+                    if (d == min && coincidences > 0) {
                         minI.add(i);
                     }
                 }
@@ -820,6 +837,57 @@ public class SNVIlluminaMethod extends AbstractSNV {
         }
         return o21;
     }
+
+//    private void addEdgesFromKnowsHaplotypes(List<Set<Integer>> adjacencyList) {
+//        int threshold = Start.tryParseInt(Start.settings.getOrDefault("-ct", "100"), 100);
+//        for (int i = 0; i < adjacencyList.size(); i++) {
+//            if (adjacencyList.get(i).size() == 0) {
+//                continue;
+//            }
+//            int first = i / minorCount;
+//            for (int j = i + 1; j < adjacencyList.size(); j++) {
+//                if (adjacencyList.get(j).size() == 0) {
+//                    continue;
+//                }
+//
+//                int second = j / minorCount;
+//                if (first == second) {
+//                    continue;
+//                }
+//                if (adjacencyList.get(i).contains(j)) {
+//                    continue;
+//                }
+//                int allele1 = getAllele(i);
+//                int allele2 = getAllele(j);
+//
+//                char m1 = al.charAt(allele1);
+//                char m2 = al.charAt(allele2);
+//                int hits = hitsInKnownHaplotypes(first, m1, second, m2);
+//
+//                if (hits > threshold) {
+//                    adjacencyList.get(i).add(j);
+//                    adjacencyList.get(j).add(i);
+//                    log("Connect " + first + " " + second + " " + m1 + " " + m2 + " hits = " + hits);
+//                }
+//            }
+//        }
+//    }
+//
+//    private int hitsInKnownHaplotypes(int first, char m1, int second, char m2) {
+//        String key = first + "_" + second + m1 + m2;
+//        if (knownHits.containsKey(key)) {
+//            return knownHits.get(key);
+//        }
+//        int result = 0;
+//        for (int i = 0; i < Start.coronaHaplotypes.reads.length; i++) {
+//            String read = Start.coronaHaplotypes.reads[i];
+//            if (second < read.length() - 1 && read.charAt(first) == m1 && read.charAt(second) == m2) {
+//                result++;
+//            }
+//        }
+//        knownHits.put(key, result);
+//        return result;
+//    }
 
     private String getCorrelationKey(int first, int second, char m1, char m2) {
         return first + m1 + "_" + second + m2;

@@ -34,7 +34,7 @@ public abstract class AbstractSNV {
     public static String al = "ACGT-N";
     public static int minorCount = al.length() - 2;
     public boolean log = false;
-    private int MIN_O22_THRESHOLD;
+    public int MIN_O22_THRESHOLD;
     private double MIN_O22_FREQ;
     Map<String, long[]> osCache = new ConcurrentHashMap<>();
     List<Clique> answer = new ArrayList<>();
@@ -397,6 +397,13 @@ public abstract class AbstractSNV {
         }
         log("Cliques time " + (System.currentTimeMillis() - st));
         log("Cliques before merge " + cliques.size());
+        double average = cliques.stream().mapToInt(Set::size).average().getAsDouble();
+        log("Average clique size "+ average);
+        //average < 2.001 && cliques.size() > 500
+        if(cliques.size() > 500){
+            log("Too much cliques to process");
+            return new HashSet<>();
+        }
         // adjacency list for relations between cliques - at least one edge between them and no 'no edges'
         List<Set<Integer>> realCliqueEdges = new ArrayList<>();
         for (int i = 0; i < cliques.size(); i++) {
@@ -442,7 +449,11 @@ public abstract class AbstractSNV {
         }
         computeNoEdges(adjacencyList, cliques, realCliqueEdges, cAdList);
         if (!cAdList.isEmpty()) {
-            log("Average clique degree " + cAdList.stream().mapToInt(Set::size).average().getAsDouble() + " start compute cliques");
+            double degree = cAdList.stream().mapToInt(Set::size).average().getAsDouble();
+            log("Average clique degree " + degree + " start compute cliques");
+            if (degree > 100){
+                return new HashSet<>();
+            }
         }
         st = System.currentTimeMillis();
         Set<Set<Integer>> cliqueCliques = AlgorithmUtils.findCliques(cAdList);
@@ -453,6 +464,9 @@ public abstract class AbstractSNV {
 
         Set<Set<Integer>> mergedCliques = new HashSet<>();
         log("Cliques of cliques size " + cliqueCliques.size());
+//        if (cliqueCliques.size() > 500){
+//            return new HashSet<>();
+//        }
         boolean fl = cliqueCliques.size() < 100;
         //merge cliques but if they are from different components then merge only for components (if A,B from 1, and C,D from 2. Then it will merge only A with B and C with D)
         for (Set<Integer> setOfCliquesToMerge : cliqueCliques) {
@@ -483,6 +497,10 @@ public abstract class AbstractSNV {
         }
         log("");
         mergedCliques.removeAll(toRemove);
+        if (mergedCliques.size() > 300){
+            log("Too much merged cliques "+mergedCliques.size());
+            return  new HashSet<>();
+        }
         return mergedCliques;
     }
 

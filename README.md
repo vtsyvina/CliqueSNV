@@ -1,7 +1,7 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/open?id=1MZ-J0O6yxSoF9OZxD6DT6ChazvOZsUa-">here</a> (latest ver 1.5.3, May 2020)
+Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 1.5.4, September 2020)
 
 ## Citation
 Please cite preprint at BioRxiv: https://www.biorxiv.org/content/10.1101/264242v1
@@ -52,7 +52,20 @@ That's why with large number of SNPs it may be useful to use fast polynomial alg
 - ``-os`` - output start position. If provided will cut the output from 0 to given position in haplotypes, variant calling
 - ``-oe`` - output end position. If provided will cut the output from given position till the end in haplotypes, variant calling. 
 For example, ``-os 100 -oe 700`` will output haplotypes only for positions [100, 700] or include SNPs in variant calling only inside this range
-
+- ``-rn`` - (no value needed) if present will create a file "<sample_name>_read_names.txt" with the reads assigned by the tool to all found haplotypes.
+Format is the following:
+```
+><1_haplotype_name>
+read1
+read2
+...
+><2_haplotype_name>
+read100
+read102
+...
+```
+**Note!** the same read can appear in different haplotypes if they are of the same distance to haplotypes. The tool assigns reads in several stages and the process is not trivial(for Illumina reads).
+Thus, this file cannot be viewed as very precise as it is, but can be used for additional analysis.
 
 ### t and tf parameters choice
 These two parameters are significant, since they put a border in trade-off between precision and recall. 
@@ -197,6 +210,10 @@ the runtime on powerful machines
 
 1.5.3
 - Improved handling of SNPs graph for cliques search (should significantly improve performance on long references >5000 long)
+
+1.5.4
+- Better memory management, some performance improvements
+- new "-rn" output parameter
 
 ## Any questions
 With any questions. please, contact: v.tsyvina@gmail.com

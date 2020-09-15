@@ -19,11 +19,11 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
     private int allele;
     private SNVIlluminaMethod method;
     private IlluminaSNVSample sample;
-    private long[][] commonReads;
+    private int[][] commonReads;
 
     private boolean ignoreDeletion;
 
-    public FindIlluminaEdgesParallelTask(SNVStructure struct, int allele, SNVIlluminaMethod method, IlluminaSNVSample sample, long[][] commonReads, boolean ignoreDeletion) {
+    public FindIlluminaEdgesParallelTask(SNVStructure struct, int allele, SNVIlluminaMethod method, IlluminaSNVSample sample, int[][] commonReads, boolean ignoreDeletion) {
         this.struct = struct;
         this.allele = allele;
         this.method = method;
@@ -85,6 +85,9 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
                 if (o21 == 0) {
                     o12 = method.calculateO12(o12, first, j);
                     long o11 = method.getO11(allele, j, first, second, o22, o21, o12, reads);
+//                    if(o11 < method.MIN_O22_THRESHOLD){
+//                        continue;
+//                    }
                     processZeroO(result, allele, l, first, hits, j, second, reads, m1, m2, o22, o21, o12, o11);
                     continue;
                 }
@@ -92,6 +95,9 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
                 o12 = method.calculateO12(o12, first, j);
                 if (o12 == 0) {
                     long o11 = method.getO11(allele, j, first, second, o22, o21, o12, reads);
+//                    if(o11 < method.MIN_O22_THRESHOLD){
+//                        continue;
+//                    }
                     processZeroO(result, allele, l, first, hits, j, second, reads, m1, m2, o22, o21, o12, o11);
                     continue;
                 }
@@ -104,6 +110,9 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
                     o11 = o22;
                     o22 = tmp;
                 }
+//                if (o11 < method.MIN_O22_THRESHOLD){
+//                    continue;
+//                }
                 //start calculate p-value, starting with p
                 //double p = struct.rowMinors[i].length/(double)(sample.reads.length - struct.rowN[first].length);
                 if (method.hasO22Edge(o11, o12, o21, o22, reads, 0.0000001, sample.referenceLength)) {
@@ -118,8 +127,10 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
                     }
                     double p = (o12 * o21) / ((double) o11 * reads);
 
-                    method.log(String.format("%d %d %c %c m1=%s\tm2=%s\to22=%s\tpO=%f\tr=%d\t%d\t%d\t%d\t%d\t%b\t%f",
-                            first, second, m1, m2, humanReadableSI(l), humanReadableSI(struct.rowMinors[j].length), humanReadableSI(hits[j]),
+                    method.log(String.format("%d %d %c %c mi1=%s\tma1=%s\tmi2=%s\tma2=%s\tpO=%f\tr=%d\t%d\t%d\t%d\t%d\t%b\t%f",
+                            first, second, m1, m2, humanReadableSI(l), humanReadableSI(struct.majorsInRow[first]),
+                            humanReadableSI(struct.rowMinors[j].length), humanReadableSI(struct.majorsInRow[second]),
+
                             method.USE_LOG_PVALUE ? Utils.binomialLogPvalue((int) o22, p, (int) reads) : Utils.binomialPvalue((int) o22, p, (int) reads),
                             reads, o11, o12, o21, o22, fl,
                             (o22 / (0.1 * o11 + (1 - 0.1) * (o12 + o21)))

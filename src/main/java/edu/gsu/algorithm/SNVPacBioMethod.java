@@ -180,12 +180,15 @@ public class SNVPacBioMethod extends AbstractSNV {
      */
     private Sample getFilteredSample(List<Integer> allPositionsInCliques) {
         int[] mistakes = new int[MISTAKES_TO_FILTER_LIMIT];
-        List<String>[] m = new ArrayList[MISTAKES_TO_FILTER_LIMIT];
+        List<Integer>[] m = new ArrayList[MISTAKES_TO_FILTER_LIMIT];
         for (int i = 0; i < MISTAKES_TO_FILTER_LIMIT; i++) {
             m[i] = new ArrayList<>();
         }
         List<String> newSequences = new ArrayList<>();
-        for (String sequence : sample.reads) {
+        List<String> newNames = new ArrayList<>();
+        String[] reads = sample.reads;
+        for (int j = 0; j < reads.length; j++) {
+            String sequence = reads[j];
             int apply = new HammingDistance().apply(sequence, consensus());
             for (int i = 0; i < sequence.length(); i++) {
                 if (sequence.charAt(i) == 'N' && consensus().charAt(i) != 'N') {
@@ -197,23 +200,24 @@ public class SNVPacBioMethod extends AbstractSNV {
                     apply--;
                 }
             }
-            if(apply >= MISTAKES_TO_FILTER_LIMIT){
-                apply = MISTAKES_TO_FILTER_LIMIT-1;
+            if (apply >= MISTAKES_TO_FILTER_LIMIT) {
+                apply = MISTAKES_TO_FILTER_LIMIT - 1;
             }
             mistakes[apply]++;
-            m[apply].add(sequence);
+            m[apply].add(j);
         }
         outer:
-        for (List<String> strings : m) {
-            for (String r : strings) {
+        for (List<Integer> idxs : m) {
+            for (Integer r : idxs) {
                 if (newSequences.size() < (1 - READS_PORTION_TO_FILTER) * sample.reads.length) {
-                    newSequences.add(r);
+                    newSequences.add(sample.reads[r]);
+                    newNames.add(sample.readNames[r]);
                 } else {
                     break outer;
                 }
             }
         }
-        return new Sample(sample.name, newSequences.toArray(new String[newSequences.size()]));
+        return new Sample(sample.name, newSequences.toArray(new String[0]), newNames.toArray(new String[0]));
     }
 
     @Override

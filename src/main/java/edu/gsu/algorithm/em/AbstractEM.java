@@ -11,11 +11,11 @@ import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 public abstract class AbstractEM {
-
+    protected int MAX_EM_ITER = 100;
     protected int MAX_READ_LENGTH = 3000;
     protected final int MAX_MISSES = 1000;
     private final double e = getE();
-    protected static final double eps = 0.0001;
+    protected static final double eps = 0.001;
 
     protected double[][] pre;
 
@@ -92,7 +92,7 @@ public abstract class AbstractEM {
                 frequencies[j] = m[j] / sum;
             }
             if (log) System.out.print("\r"+iter++);
-        } while (euclidDistance(oldFrequencies, frequencies) > eps);
+        } while (euclidDistance(oldFrequencies, frequencies) > eps && iter < MAX_EM_ITER);
         if(log) System.out.println();
         return Arrays.stream(frequencies)
                 .boxed()

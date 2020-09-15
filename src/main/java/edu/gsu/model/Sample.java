@@ -10,12 +10,20 @@ public class Sample {
      */
     public String[] reads;
 
+    public String[] readNames;
+
     public Sample() {
     }
 
     public Sample(String name, String[] sequences) {
         this.name = name;
         this.reads = sequences;
+    }
+
+    public Sample(String name, String[] sequences, String[] readNames) {
+        this.name = name;
+        this.reads = sequences;
+        this.readNames = readNames;
     }
 }
 

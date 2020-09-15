@@ -34,11 +34,12 @@ public class Start {
     public static Map<String, String> settings = new HashMap<>();
     public static Sample answer;
     public static ExecutorService executor;
+    public static Sample coronaHaplotypes;
 
     public static void main(String[] args) throws IOException, InterruptedException, ExecutionException {
         printVersion();
         parseArgs(args);
-        System.out.println("Settings: "+settings);
+        System.out.println("Settings: " + settings);
         executor = Executors.newFixedThreadPool(threadsNumber());
         if (settings.containsKey("-answer")) {
             answer = DataReader.readSample(new File(settings.get("-answer")));
@@ -102,6 +103,11 @@ public class Start {
 
     private static void illumina2SNV(boolean test) throws IOException {
         long start = System.currentTimeMillis();
+        String coronaPath = settings.getOrDefault("-corona", "");
+        if (coronaPath.length() > 0) {
+            coronaHaplotypes = DataReader.getPacBioReads(new File(coronaPath));
+            System.out.println();
+        }
         String pathname = settings.getOrDefault("-in", "data/Illumina_reads/reads.sam");
         IlluminaSNVSample sample = DataReader.getIlluminaPairedReads(new File(pathname));
         System.out.println("read " + (System.currentTimeMillis() - start));
@@ -110,8 +116,8 @@ public class Start {
                 tryParseDouble(settings.get("-tf"), 0.05),
                 log);
         List<SNVResultContainer> haplotypes = snvIlluminaMethod.getHaplotypes();
-        writeSNVResultsToFile(sample.name, haplotypes, false);
-        System.out.println(String.format("SNV got %d haplotypes\n", haplotypes.size()));
+        writeSNVResultsToFile(sample.name, haplotypes, null, false);
+        System.out.printf("SNV got %d haplotypes\n%n", haplotypes.size());
         if (!test) System.out.println(haplotypes);
         if (test) {
             snvIlluminaMethod.setLog(true);
@@ -125,7 +131,7 @@ public class Start {
         String pathname = settings.getOrDefault("-in", "data/Illumina_reads/reads.sam");
         File input = new File(pathname);
         if (!input.exists()) {
-            System.out.println(String.format("Input file %s does not exists", input.getCanonicalPath()));
+            System.out.printf("Input file %s does not exists%n", input.getCanonicalPath());
             return;
         }
         IlluminaSNVSample sample = DataReader.getIlluminaPairedReads(input);
@@ -142,7 +148,7 @@ public class Start {
     private static void pacBioSNV(boolean test) throws IOException, ExecutionException, InterruptedException {
         File file = new File(settings.getOrDefault("-in", "data/PacBio_reads/reads.sam"));
         if (!file.exists()) {
-            System.out.println(String.format("Input file %s does not exists", file.getCanonicalPath()));
+            System.out.printf("Input file %s does not exists%n", file.getCanonicalPath());
             return;
         }
         Sample sample = DataReader.getPacBioReads(file);
@@ -154,20 +160,20 @@ public class Start {
                 tryParseDouble(settings.get("-tf"), 0.05),
                 log);
         List<SNVResultContainer> haplotypes = snvPacBioMethod.getHaplotypes();
-        System.out.println(String.format("SNV got %d haplotypes\n", haplotypes.size()));
+        System.out.printf("SNV got %d haplotypes\n%n", haplotypes.size());
         if (!test) System.out.println(haplotypes);
         if (test) {
             snvPacBioMethod.setLog(true);
             snvPacBioMethod.outputAnswerChecking(haplotypes);
         }
-        writeSNVResultsToFile(sample.name, haplotypes, false);
+        writeSNVResultsToFile(sample.name, haplotypes, sample, false);
         System.out.println("time,ms " + (System.currentTimeMillis() - start));
     }
 
     private static void consensus(String method) throws IOException {
         File file = new File(settings.getOrDefault("-in", "data/PacBio_reads/reads.sam"));
         if (!file.exists()) {
-            System.out.println(String.format("Input file %s does not exists", file.getCanonicalPath()));
+            System.out.printf("Input file %s does not exists%n", file.getCanonicalPath());
             return;
         }
         String consensus = "";
@@ -185,7 +191,7 @@ public class Start {
         }
         List<SNVResultContainer> c = new ArrayList<>();
         c.add(new SNVResultContainer("", null, null, consensus));
-        writeSNVResultsToFile(name + "_consensus", c, true);
+        writeSNVResultsToFile(name + "_consensus", c, null, true);
     }
 
     private static void imputation(boolean test) throws IOException, InterruptedException {
@@ -193,7 +199,7 @@ public class Start {
         start = System.currentTimeMillis();
         File file = new File(settings.getOrDefault("-in", "data/50plus50/50snps.1.txt"));
         if (!file.exists()) {
-            System.out.println(String.format("Input file %s does not exists", file.getCanonicalPath()));
+            System.out.printf("Input file %s does not exists%n", file.getCanonicalPath());
             return;
         }
         if (file.isDirectory()) {
@@ -282,8 +288,9 @@ public class Start {
         }
     }
 
-    private static void writeSNVResultsToFile(String name, List<SNVResultContainer> haplotypes, boolean fastaOnly) throws IOException {
+    private static void writeSNVResultsToFile(String name, List<SNVResultContainer> haplotypes, Sample sample, boolean fastaOnly) throws IOException {
         String snvOutput = settings.getOrDefault("-outDir", "snv_output/");
+        boolean writeReadNames = settings.containsKey("-rn");
         List<SNVResultContainer> haplotypesCopy = new ArrayList<>();
         if (haplotypes.size() == 0) {
             System.out.println("CliqueSNV didn't find any haplotypes (too low coverage)");
@@ -308,27 +315,62 @@ public class Start {
         System.out.println("Results are available in: " + path.toFile().getCanonicalPath());
         Path finalPath = path;
         int[] i = {1};
-        String format =  settings.getOrDefault("-fdf","short") ; //extended
+        String format = settings.getOrDefault("-fdf", "short"); //extended
         boolean defaultFormat = format.equals("short");
         int precision = 2;
-        if(!defaultFormat && !format.equals("extended")){
+        if (!defaultFormat && !format.equals("extended")) {
             precision = Integer.parseInt(format.substring(8));
         }
         int finalPrecision = precision;
+        Path readPath = writeReadNames ? preparePath(snvOutput + name + "_read_names.txt") : null;
         haplotypesCopy.forEach(h -> {
             try {
-                if(defaultFormat){
-                   Files.write(finalPath, (">" + (i[0]++) + "_fr_" + h.frequency + "\n").getBytes(), StandardOpenOption.APPEND);
-                } else{
-                    Files.write(finalPath, (">" + name +"_"+ (i[0]++)+ "_" + String.format("%."+ finalPrecision +"f", h.frequency) + "\n").getBytes(), StandardOpenOption.APPEND);
+                String haplotypeName = ">" + (i[0]++) + "_fr_" + h.frequency;
+                if (!defaultFormat) {
+                    haplotypeName = ">" + name + "_" + (i[0]++) + "_" + String.format("%." + finalPrecision + "f", h.frequency);
                 }
+                Files.write(finalPath, (haplotypeName + "\n").getBytes(), StandardOpenOption.APPEND);
                 Files.write(finalPath, h.haplotype.getBytes(), StandardOpenOption.APPEND);
                 Files.write(finalPath, "\n\n".getBytes(), StandardOpenOption.APPEND);
+                if (writeReadNames) {
+                    writeReadNames(readPath, h, sample, haplotypeName);
+                }
             } catch (IOException e) {
                 e.printStackTrace();
             }
 
         });
+    }
+
+    private static void writeReadNames(Path readPath, SNVResultContainer h, Sample sample, String haplotypeName) throws IOException {
+        Files.write(readPath, (haplotypeName + "\n").getBytes(), StandardOpenOption.APPEND);
+        StringBuilder str = new StringBuilder();
+        if (h.illuminaCluster != null) {
+            for (int j = 0; j < h.illuminaCluster.size(); j++) {
+                str.append(h.illuminaCluster.get(j).name).append("\n");
+                if (j % 5000 == 0) {
+                    Files.write(readPath, str.toString().getBytes(), StandardOpenOption.APPEND);
+                    str.setLength(0);
+                }
+            }
+            if (str.length() > 0) {
+                Files.write(readPath, str.toString().getBytes(), StandardOpenOption.APPEND);
+            }
+        }
+        if (h.pacBioCluster != null) {
+            int j = 0;
+            for (Map.Entry<Integer, String> entry : h.pacBioCluster.entrySet()) {
+                str.append(sample.readNames[entry.getKey()]).append("\n");
+                if (j % 5000 == 0) {
+                    Files.write(readPath, str.toString().getBytes(), StandardOpenOption.APPEND);
+                    str.setLength(0);
+                }
+                j++;
+            }
+            if (str.length() > 0) {
+                Files.write(readPath, str.toString().getBytes(), StandardOpenOption.APPEND);
+            }
+        }
     }
 
     private static Path preparePath(String filePath) throws IOException {
@@ -434,7 +476,7 @@ public class Start {
     private static void printVersion() throws IOException {
         final Properties properties = new Properties();
         properties.load(Start.class.getClassLoader().getResourceAsStream("project.properties"));
-        System.out.println("CliqueSNV version: "+properties.getProperty("version"));
+        System.out.println("CliqueSNV version: " + properties.getProperty("version"));
     }
 
     static class ImputationTask implements Callable<Integer> {
