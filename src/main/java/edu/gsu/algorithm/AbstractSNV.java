@@ -451,9 +451,9 @@ public abstract class AbstractSNV {
         if (!cAdList.isEmpty()) {
             double degree = cAdList.stream().mapToInt(Set::size).average().getAsDouble();
             log("Average clique degree " + degree + " start compute cliques");
-            if (degree > 100){
-                return new HashSet<>();
-            }
+//            if (degree > 200){
+//                return new HashSet<>();
+//            }
         }
         st = System.currentTimeMillis();
         Set<Set<Integer>> cliqueCliques = AlgorithmUtils.findCliques(cAdList);
