@@ -400,10 +400,11 @@ public abstract class AbstractSNV {
         double average = cliques.stream().mapToInt(Set::size).average().getAsDouble();
         log("Average clique size "+ average);
         //average < 2.001 && cliques.size() > 500
-        if(cliques.size() > 500){
-            log("Too much cliques to process");
-            return new HashSet<>();
-        }
+        // TODO think about it!
+//        if(cliques.size() > 500){
+//            log("Too much cliques to process");
+//            return new HashSet<>();
+//        }
         // adjacency list for relations between cliques - at least one edge between them and no 'no edges'
         List<Set<Integer>> realCliqueEdges = new ArrayList<>();
         for (int i = 0; i < cliques.size(); i++) {
@@ -440,10 +441,11 @@ public abstract class AbstractSNV {
         log("Calculating full graph");
         //full graph between cliques minus all 'no edges'
         List<Set<Integer>> cAdList = new ArrayList<>();
+        int[] components = AlgorithmUtils.connectedComponents(realCliqueEdges);
         for (int i = 0; i < cliques.size(); i++) {
             cAdList.add(new HashSet<>());
             for (int j = 0; j < cliques.size(); j++) {
-                if (i == j) continue;
+                if (i == j || components[i] != components[j]) continue;
                 cAdList.get(i).add(j);
             }
         }
@@ -451,7 +453,8 @@ public abstract class AbstractSNV {
         if (!cAdList.isEmpty()) {
             double degree = cAdList.stream().mapToInt(Set::size).average().getAsDouble();
             log("Average clique degree " + degree + " start compute cliques");
-//            if (degree > 200){
+            // TODO think about it
+//            if (degree > 150){
 //                return new HashSet<>();
 //            }
         }
@@ -459,11 +462,12 @@ public abstract class AbstractSNV {
         Set<Set<Integer>> cliqueCliques = AlgorithmUtils.findCliques(cAdList);
         log("Cliques cliques time " + (System.currentTimeMillis() - st));
 
-        int[] components = AlgorithmUtils.connectedComponents(realCliqueEdges);
+//        int[] components = AlgorithmUtils.connectedComponents(realCliqueEdges);
         if (components.length < 200) log("Components " + Arrays.toString(components));
 
         Set<Set<Integer>> mergedCliques = new HashSet<>();
         log("Cliques of cliques size " + cliqueCliques.size());
+        // TODO think about it
 //        if (cliqueCliques.size() > 500){
 //            return new HashSet<>();
 //        }
@@ -497,6 +501,7 @@ public abstract class AbstractSNV {
         }
         log("");
         mergedCliques.removeAll(toRemove);
+        // TODO think about it
         if (mergedCliques.size() > 300){
             log("Too much merged cliques "+mergedCliques.size());
             return  new HashSet<>();

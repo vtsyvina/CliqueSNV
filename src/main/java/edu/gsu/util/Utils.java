@@ -139,6 +139,23 @@ public class Utils {
         return result;
     }
 
+    public static int[][] countCoverage(IlluminaSNVSample sample, String alphabet){
+        List<PairEndRead> reads = sample.reads;
+        if (reads.size() == 0) {
+            return new int[0][alphabet.length()];
+        }
+        int[][] count = new int[alphabet.length()][sample.referenceLength];
+        reads.forEach(r -> {
+            for (int i = 0; i < r.l.length(); i++) {
+                count[convertLetterToDigit(r.l.charAt(i), alphabet)][i + r.lOffset]++;
+            }
+            for (int i = 0; i < r.r.length(); i++) {
+                count[convertLetterToDigit(r.r.charAt(i), alphabet)][i + r.rOffset]++;
+            }
+        });
+        return count;
+    }
+
     public static double[][] profile(IlluminaSNVSample sample, String alphabet) {
         List<PairEndRead> reads = sample.reads;
         if (reads.size() == 0) {
