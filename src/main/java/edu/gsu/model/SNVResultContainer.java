@@ -26,17 +26,7 @@ public class SNVResultContainer {
         this.clusterString = clusterString;
     }
 
-    public SNVResultContainer(String clusterString, Map<Integer, String> pacBioCluster, Clique haplotypeClique, String haplotype, double frequency) {
-        this.pacBioCluster = pacBioCluster;
-        this.haploClique = haplotypeClique;
-        this.haplotype = haplotype;
-        this.clusterString = clusterString;
-        this.frequency = frequency;
-    }
-
-
-
-    public SNVResultContainer(String clusterString,  Clique haplotypeClique, String haplotype, List<PairEndRead> illuminaCluster) {
+    public SNVResultContainer(String clusterString, List<PairEndRead> illuminaCluster, Clique haplotypeClique, String haplotype) {
         this.illuminaCluster = illuminaCluster;
         this.haploClique = haplotypeClique;
         this.haplotype = haplotype;

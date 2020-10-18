@@ -667,8 +667,8 @@ public class SNVIlluminaMethod extends AbstractSNV {
                     str.setCharAt(i, consensus().charAt(i));
                 }
                 // some reads may be aligned wrongly or just have minor allele with tiny coverage(1-2 reads) that will give an SNP there
-                if (str.charAt(i) != consensus.charAt(i) && coverage[i] < MINIMUM_COVERAGE_FOR_HAPLOTYPE_SNP){
-                    log("prevented at pos "+i+" to get "+ str.charAt(i) +" with coverage "+coverage[i]);
+                if (str.charAt(i) != consensus.charAt(i) && coverage[i] < MINIMUM_COVERAGE_FOR_HAPLOTYPE_SNP) {
+                    log("prevented at pos " + i + " to get " + str.charAt(i) + " with coverage " + coverage[i]);
                     str.setCharAt(i, consensus().charAt(i));
                 }
             }
@@ -680,7 +680,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                 }
             }
             Clique haplotypeClique = new Clique(snps, consensus());
-            SNVResultContainer container = new SNVResultContainer(s.getKey(), haplotypeClique, haplotype, cluster);
+            SNVResultContainer container = new SNVResultContainer(s.getKey(), cluster, haplotypeClique, haplotype);
             container.sourceClique = getSourceClique(allPositionsInCliques, cliquesSet, s.getKey(), container);
             return container;
         }).collect(Collectors.toList());
@@ -904,5 +904,15 @@ public class SNVIlluminaMethod extends AbstractSNV {
 
     private String getCorrelationKey(int first, int second, char m1, char m2) {
         return first + m1 + "_" + second + m2;
+    }
+
+    @Override
+    protected List<PairEndRead> getIlluminaReads() {
+        return sample.reads;
+    }
+
+    @Override
+    protected Map<Integer, String> getPacBioCluster() {
+        return null;
     }
 }

@@ -1,10 +1,16 @@
 package edu.gsu.start;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import edu.gsu.algorithm.SNVIlluminaMethod;
 import edu.gsu.algorithm.SNVPacBioMethod;
 import edu.gsu.algorithm.imputation.Imputation;
 import edu.gsu.model.Clique;
 import edu.gsu.model.IlluminaSNVSample;
+import edu.gsu.model.PairEndRead;
 import edu.gsu.model.SNVResultContainer;
 import edu.gsu.model.Sample;
 import edu.gsu.util.DataReader;
@@ -27,9 +33,13 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Start {
+    public static final int DEFAULT_TIMEOUT = 3600 * 3;
+    public static String errorMessage = "none";
     private static boolean log;
     public static Map<String, String> settings = new HashMap<>();
     public static Sample answer;
@@ -115,7 +125,25 @@ public class Start {
                 tryParseInt(settings.get("-t"), 10),
                 tryParseDouble(settings.get("-tf"), 0.05),
                 log);
-        List<SNVResultContainer> haplotypes = snvIlluminaMethod.getHaplotypes();
+        Callable<List<SNVResultContainer>> task = snvIlluminaMethod::getHaplotypes;
+        Future<List<SNVResultContainer>> future = executor.submit(task);
+        long timeout = tryParseLong(settings.get("-tl"), DEFAULT_TIMEOUT);
+        List<SNVResultContainer> haplotypes;
+        try {
+            haplotypes = future.get(timeout, TimeUnit.SECONDS);
+        } catch (InterruptedException | ExecutionException e) {
+            future.cancel(true);
+            e.printStackTrace();
+            errorMessage = "Runtime error";
+            haplotypes = snvIlluminaMethod.getDefaultHaplotype();
+        } catch (TimeoutException e) {
+            System.out.println("The time limit has been reached");
+            errorMessage = "Timeout reached";
+            future.cancel(true);
+            e.printStackTrace();
+            haplotypes = snvIlluminaMethod.getDefaultHaplotype();
+        }
+
         writeSNVResultsToFile(sample.name, haplotypes, null, false);
         System.out.printf("SNV got %d haplotypes\n%n", haplotypes.size());
         if (!test) System.out.println(haplotypes);
@@ -124,6 +152,8 @@ public class Start {
             snvIlluminaMethod.outputAnswerChecking(haplotypes);
         }
         System.out.println("time,ms " + (System.currentTimeMillis() - start));
+        executor.shutdown();
+        System.exit(0);
     }
 
     private static void illumina2SNVVC() throws IOException {
@@ -159,7 +189,25 @@ public class Start {
                 tryParseInt(settings.get("-t"), 10),
                 tryParseDouble(settings.get("-tf"), 0.05),
                 log);
-        List<SNVResultContainer> haplotypes = snvPacBioMethod.getHaplotypes();
+        Callable<List<SNVResultContainer>> task = snvPacBioMethod::getHaplotypes;
+        Future<List<SNVResultContainer>> future = executor.submit(task);
+        long timeout = tryParseLong(settings.get("-tl"), DEFAULT_TIMEOUT);
+        List<SNVResultContainer> haplotypes = null;
+        try {
+            haplotypes = future.get(timeout, TimeUnit.SECONDS);
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+            errorMessage = "Runtime error";
+            future.cancel(true);
+            haplotypes = snvPacBioMethod.getDefaultHaplotype();
+        } catch (TimeoutException e) {
+            System.out.println("The time limit has been reached");
+            errorMessage = "Timeout reached";
+            snvPacBioMethod.log = false;
+            e.printStackTrace();
+            haplotypes = snvPacBioMethod.getDefaultHaplotype();
+        }
+
         System.out.printf("SNV got %d haplotypes\n%n", haplotypes.size());
         if (!test) System.out.println(haplotypes);
         if (test) {
@@ -168,6 +216,8 @@ public class Start {
         }
         writeSNVResultsToFile(sample.name, haplotypes, sample, false);
         System.out.println("time,ms " + (System.currentTimeMillis() - start));
+        executor.shutdown();
+        System.exit(0);
     }
 
     private static void consensus(String method) throws IOException {
@@ -190,7 +240,7 @@ public class Start {
             name = sample.name;
         }
         List<SNVResultContainer> c = new ArrayList<>();
-        c.add(new SNVResultContainer("", null, null, consensus));
+        c.add(new SNVResultContainer("", (List<PairEndRead>) null, null, consensus));
         writeSNVResultsToFile(name + "_consensus", c, null, true);
     }
 
@@ -305,33 +355,21 @@ public class Start {
         int end = Integer.parseInt(Start.settings.getOrDefault("-oe", String.valueOf(haplotypes.get(0).haplotype.length())));
         haplotypesCopy.forEach(h -> h.haplotype = h.haplotype.substring(start, end));
         if (!fastaOnly) {
-            path = preparePath(snvOutput + (name == null ? "snv_output.txt" : name + ".txt"));
+            path = preparePath(snvOutput + (name == null ? "snv_output.json" : name + ".json"));
             System.out.println("Results are available in: " + path.toFile().getCanonicalPath());
-            Files.write(path, ("Used parameters:" + Start.settings.toString() + "\n").getBytes(), StandardOpenOption.WRITE);
-            Files.write(path, String.format("SNV got %d haplotypes\n", haplotypesCopy.size()).getBytes(), StandardOpenOption.APPEND);
-            Files.write(path, haplotypesCopy.toString().getBytes(), StandardOpenOption.APPEND);
+            Files.write(path, createJson(haplotypes, name).getBytes(), StandardOpenOption.WRITE);
+
         }
         path = preparePath(snvOutput + (name == null ? "snv_output.fasta" : name + ".fasta"));
         System.out.println("Results are available in: " + path.toFile().getCanonicalPath());
-        Path finalPath = path;
-        int[] i = {1};
-        String format = settings.getOrDefault("-fdf", "short"); //extended
-        boolean defaultFormat = format.equals("short");
-        int precision = 2;
-        if (!defaultFormat && !format.equals("extended")) {
-            precision = Integer.parseInt(format.substring(8));
-        }
-        int finalPrecision = precision;
         Path readPath = writeReadNames ? preparePath(snvOutput + name + "_read_names.txt") : null;
-        haplotypesCopy.forEach(h -> {
+        for (int j = 0, haplotypesCopySize = haplotypesCopy.size(); j < haplotypesCopySize; j++) {
+            SNVResultContainer h = haplotypesCopy.get(j);
             try {
-                String haplotypeName = ">" + (i[0]++) + "_fr_" + h.frequency;
-                if (!defaultFormat) {
-                    haplotypeName = ">" + name + "_" + (i[0]++) + "_" + String.format("%." + finalPrecision + "f", h.frequency);
-                }
-                Files.write(finalPath, (haplotypeName + "\n").getBytes(), StandardOpenOption.APPEND);
-                Files.write(finalPath, h.haplotype.getBytes(), StandardOpenOption.APPEND);
-                Files.write(finalPath, "\n\n".getBytes(), StandardOpenOption.APPEND);
+                String haplotypeName = getHaplotypeName(name, j, h.frequency);
+                Files.write(path, (haplotypeName + "\n").getBytes(), StandardOpenOption.APPEND);
+                Files.write(path, h.haplotype.getBytes(), StandardOpenOption.APPEND);
+                Files.write(path, "\n\n".getBytes(), StandardOpenOption.APPEND);
                 if (writeReadNames) {
                     writeReadNames(readPath, h, sample, haplotypeName);
                 }
@@ -339,7 +377,44 @@ public class Start {
                 e.printStackTrace();
             }
 
-        });
+        }
+    }
+
+    private static String getHaplotypeName(String name, int idx, double frequency) {
+        String format = settings.getOrDefault("-fdf", "short"); //extended
+        boolean defaultFormat = format.equals("short");
+        int precision = 2;
+        if (!defaultFormat && !format.equals("extended")) {
+            precision = Integer.parseInt(format.substring(8));
+        }
+        String haplotypeName = ">" + idx + "_fr_" + frequency;
+        if (!defaultFormat) {
+            haplotypeName = ">" + name + "_" + idx + "_" + String.format("%." + precision + "f", frequency);
+        }
+        return haplotypeName;
+    }
+
+    private static String createJson(List<SNVResultContainer> haplotypes, String name) {
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        JsonObject json = new JsonObject();
+        JsonElement jsonElement = gson.toJsonTree(settings);
+        json.addProperty("version", getVersion());
+        json.add("settings", jsonElement);
+        json.addProperty("error", errorMessage);
+        json.addProperty("foundHaplotypes", haplotypes.size());
+        JsonArray haplArr = new JsonArray();
+        for (int i = 0; i < haplotypes.size(); i++) {
+            SNVResultContainer haplotype = haplotypes.get(i);
+            JsonObject h = new JsonObject();
+            h.addProperty("frequency", haplotype.frequency);
+            h.addProperty("name", getHaplotypeName(name, i, haplotype.frequency));
+            h.addProperty("snps", haplotype.haploClique.toString());
+            h.addProperty("sourceClique", haplotype.haploClique.toString());
+            h.addProperty("haplotype", haplotype.haplotype);
+            haplArr.add(h);
+        }
+        json.add("haplotypes", haplArr);
+        return gson.toJson(json);
     }
 
     private static void writeReadNames(Path readPath, SNVResultContainer h, Sample sample, String haplotypeName) throws IOException {
@@ -461,6 +536,18 @@ public class Start {
         }
     }
 
+    public static long tryParseLong(String value, long def) {
+        if (value == null) {
+            return def;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException nfe) {
+            System.out.println("Couldn't parse " + value);
+            return def;
+        }
+    }
+
     private static double tryParseDouble(String value, double def) {
         if (value == null) {
             return def;
@@ -473,10 +560,19 @@ public class Start {
         }
     }
 
-    private static void printVersion() throws IOException {
+    private static void printVersion() {
+        String version = getVersion();
+        System.out.println("CliqueSNV version: " + version);
+    }
+
+    private static String getVersion() {
         final Properties properties = new Properties();
-        properties.load(Start.class.getClassLoader().getResourceAsStream("project.properties"));
-        System.out.println("CliqueSNV version: " + properties.getProperty("version"));
+        try {
+            properties.load(Start.class.getClassLoader().getResourceAsStream("project.properties"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return properties.getProperty("version");
     }
 
     static class ImputationTask implements Callable<Integer> {

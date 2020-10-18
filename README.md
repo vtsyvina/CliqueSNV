@@ -1,7 +1,7 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 1.5.4, September 2020)
+Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 1.5.5, October 2020)
 
 ## Citation
 Please cite preprint at BioRxiv: https://www.biorxiv.org/content/10.1101/264242v1
@@ -42,6 +42,8 @@ There are several available parameters:
 That's why with large number of SNPs it may be useful to use fast polynomial algorithm with lower quality.
 - ``-ignoreDeletion`` - a flag to ignore deletions as potential SNVs for Illumina. For PacBio deletions are always ignored. 
 - ``-threads`` - number of threads for parallel tasks. By default program will use all available processors' cores.
+- ``-tl`` - the time limit in seconds. The program will stop after reaching this time limit and report just consensus haplotype. The json file will have "Timeout reached" under "error" in this case.
+Default value is 10800 (3 hours). In most of the cases the program cannot finish because of too diverse sample with too much correlated SNPs (especially of long >10kb references).
 
 ### Output parameters
 - ``-outDir`` output directory. `snv_output/` is default value
@@ -102,20 +104,35 @@ From our experience the tool consumes around 10Gb(upper bound estimate) of RAM p
 ```java -Xmx50G -jar clique-snv.jar -m snv-illumina -in data\Illumina_reads\reads.sam```
 
 ## Output
-**For default quasispecies problem** As output CliqueSNV has two files: human readable and fasta. Humanreadable file has the following form:
+**For default quasispecies problem** As output CliqueSNV has two files: json and fasta. Json file has the info of used parameters, CliqueSNV version, found haplotypes:
 ```
-SNV got 10 haplotypes
-[{
- snps=[],
- sourse clique='[],
- frequency= 0.5275826822460317,
- haplotype='GGAAAGAATAAAAGAACTAAGGAATCTAA...
-'}, {
- snps=GT-TTATTAC[31, 265, 288, 396, 617, 747, 997, 1120, 1147, 2013],
- sourse clique='GTTATGTTAATTACC[31, 265, 267, 287, 288, 289, 396, 617, 747, 749, 997, 1120, 1147, 2013, 2014],
- frequency= 0.23675737005763478,
- haplotype='GGAAAGAATAAAAGAACTAAGGAATCTAATGG...
- '}, {
+{
+  "version": "1.5.5",
+  "settings": {
+    "-m": "snv-pacbio",
+    "-log": "true",
+    "-in": "data\\PacBio_reads\\reads.sam",
+    "-t": "10",
+    "-rn": "true",
+    "-tf": "0.0001"
+  },
+  "error": "none",
+  "foundHaplotypes": 10,
+  "haplotypes": [
+    {
+      "frequency": 0.5275842396392558,
+      "name": "\u003e0_fr_0.5275842396392558",
+      "snps": "[]",
+      "sourceClique": "[]",
+      "haplotype": "GGAAAGAATAAAAGAACTAAGGAATCTAA..."
+    },
+    {
+      "frequency": 0.23674173677646565,
+      "name": "\u003e1_fr_0.23674173677646565",
+      "snps": "GT-TTATTAC[31, 265, 288, 396, 617, 747, 997, 1120, 1147, 2013]",
+      "sourceClique": "GT-TTATTAC[31, 265, 288, 396, 617, 747, 997, 1120, 1147, 2013]",
+      "haplotype": "GGAAAGAATAAAAGAACTAAGGAATCTAA..."
+    },
  ...
 ```
 - 'snps' means alleles that differ from consensus in a certain found variant,
@@ -214,6 +231,10 @@ the runtime on powerful machines
 1.5.4
 - Better memory management, some performance improvements
 - new "-rn" output parameter
+
+1.5.5
+- Change output from txt to json for ease of parsing
+- "-tl"  parameter to set time limit
 
 ## Any questions
 With any questions. please, contact: v.tsyvina@gmail.com

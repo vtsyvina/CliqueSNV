@@ -4,6 +4,7 @@ import edu.gsu.algorithm.util.AlgorithmUtils;
 import edu.gsu.algorithm.util.NotEdgeParallelTask;
 import edu.gsu.algorithm.util.TrueFrequencyEstimator;
 import edu.gsu.model.Clique;
+import edu.gsu.model.PairEndRead;
 import edu.gsu.model.SNVResultContainer;
 import edu.gsu.model.SNVStructure;
 import edu.gsu.start.Start;
@@ -398,7 +399,7 @@ public abstract class AbstractSNV {
         log("Cliques time " + (System.currentTimeMillis() - st));
         log("Cliques before merge " + cliques.size());
         double average = cliques.stream().mapToInt(Set::size).average().getAsDouble();
-        log("Average clique size "+ average);
+        log("Average clique size " + average);
         //average < 2.001 && cliques.size() > 500
         // TODO think about it!
 //        if(cliques.size() > 500){
@@ -502,9 +503,9 @@ public abstract class AbstractSNV {
         log("");
         mergedCliques.removeAll(toRemove);
         // TODO think about it
-        if (mergedCliques.size() > 300){
-            log("Too much merged cliques "+mergedCliques.size());
-            return  new HashSet<>();
+        if (mergedCliques.size() > 300) {
+            log("Too much merged cliques " + mergedCliques.size());
+            return new HashSet<>();
         }
         return mergedCliques;
     }
@@ -708,6 +709,25 @@ public abstract class AbstractSNV {
         }
         return false;
     }
+
+    public List<SNVResultContainer> getDefaultHaplotype() {
+        String haplotype = consensus();
+        Clique haplotypeClique = new Clique(haplotype, haplotype) ;
+        SNVResultContainer container;
+        if (technology() == Technology.ILLUMINA){
+            container = new SNVResultContainer("", haplotypeClique,haplotypeClique, haplotype, getIlluminaReads(), null, 1);
+        } else{
+            container = new SNVResultContainer("", haplotypeClique,haplotypeClique, haplotype, null, getPacBioCluster(), 1);
+        }
+        List<SNVResultContainer> result = new ArrayList<>();
+        result.add(container);
+        return result;
+    }
+
+    abstract protected List<PairEndRead> getIlluminaReads();
+
+    abstract protected Map<Integer, String> getPacBioCluster();
+
 
     public boolean isLog() {
         return log;

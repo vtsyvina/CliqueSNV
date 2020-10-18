@@ -5,6 +5,7 @@ import edu.gsu.algorithm.util.AlgorithmUtils;
 import edu.gsu.algorithm.util.CommonReadsPacbioParallelTask;
 import edu.gsu.algorithm.util.TrueFrequencyEstimator;
 import edu.gsu.model.Clique;
+import edu.gsu.model.PairEndRead;
 import edu.gsu.model.SNVResultContainer;
 import edu.gsu.model.SNVStructure;
 import edu.gsu.model.Sample;
@@ -239,7 +240,7 @@ public class SNVPacBioMethod extends AbstractSNV {
         if (p < 1E-12) {
             return 0;
         } else {
-            return USE_LOG_PVALUE? Utils.binomialLogPvalue((int) os[3], p, (int) reads): Utils.binomialPvalue((int) os[3], p, (int) reads);
+            return USE_LOG_PVALUE ? Utils.binomialLogPvalue((int) os[3], p, (int) reads) : Utils.binomialPvalue((int) os[3], p, (int) reads);
         }
     }
 
@@ -339,7 +340,7 @@ public class SNVPacBioMethod extends AbstractSNV {
                     if (hasO22Edge(o11, o12, o21, o22, reads, 0.0000001, src.reads[0].length())) {
                         log(String.format("%d %d %c %c m1=%d m2=%d hits=%d p=%.3e %d %d %d %d",
                                 first, second, m1, m2, l, struct.rowMinors[j].length, hits[j],
-                                USE_LOG_PVALUE? Utils.binomialLogPvalue((int) o22, p, (int) reads): Utils.binomialPvalue((int) o22, p, (int) reads),
+                                USE_LOG_PVALUE ? Utils.binomialLogPvalue((int) o22, p, (int) reads) : Utils.binomialPvalue((int) o22, p, (int) reads),
                                 o11, o12, o21, o22));
                         adjacencyList.get(i).add(j);
                     }
@@ -412,7 +413,7 @@ public class SNVPacBioMethod extends AbstractSNV {
     public String consensus() {
         if (consensus == null) {
             consensus = Utils.consensus(sample.reads, al);
-            log(" Reference length = "+consensus.length());
+            log(" Reference length = " + consensus.length());
         }
         return consensus;
     }
@@ -479,7 +480,7 @@ public class SNVPacBioMethod extends AbstractSNV {
         });
         List<SNVResultContainer> result = new ArrayList<>(merge.values());
         List<String> h = result.stream().map(s -> s.haplotype).collect(Collectors.toList());
-        List<Double> frequencies = new PacBioEM(consensus().length()+2000).frequencies(h, src);
+        List<Double> frequencies = new PacBioEM(consensus().length() + 2000).frequencies(h, src);
         // there is no evidence that consensus haplotype exists if it's frequency is less than 25%
         // remove it and recalculate frequencies
         for (int i = 0; i < result.size(); i++) {
@@ -487,7 +488,7 @@ public class SNVPacBioMethod extends AbstractSNV {
                 result.remove(i);
                 h.remove(i);
                 log("Consensus haplotype was removed");
-                frequencies = new PacBioEM(consensus().length()+2000).frequencies(h, sample);
+                frequencies = new PacBioEM(consensus().length() + 2000).frequencies(h, sample);
                 break;
             }
         }
@@ -581,5 +582,19 @@ public class SNVPacBioMethod extends AbstractSNV {
 
     public void setForImputation(boolean forImputation) {
         isForImputation = forImputation;
+    }
+
+    @Override
+    protected List<PairEndRead> getIlluminaReads() {
+        return null;
+    }
+
+    @Override
+    protected Map<Integer, String> getPacBioCluster() {
+        Map<Integer, String> map = new HashMap<>();
+        for (int i = 0; i < sample.reads.length; i++) {
+            map.put(i, sample.reads[i]);
+        }
+        return map;
     }
 }
