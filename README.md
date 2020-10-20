@@ -3,6 +3,12 @@
 
 Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 1.5.5, October 2020)
 
+## How to build
+
+`` mvn clean install``
+
+It will create `clique-snv.jar` in the root folder
+
 ## Citation
 Please cite preprint at BioRxiv: https://www.biorxiv.org/content/10.1101/264242v1
 
