@@ -13,15 +13,20 @@ public class CommonReadsPacbioParallelTask implements Callable<Boolean> {
     private SNVStructure struct;
     private Sample src;
     private boolean log;
+    // start and end positoins where we search for SNPs
+    private int start;
+    private int end;
 
 
-    public CommonReadsPacbioParallelTask(int i, int[][] commonReads, SNVStructure struct, Sample src, boolean log) {
+    public CommonReadsPacbioParallelTask(int i, int[][] commonReads, SNVStructure struct, Sample src, int start, int end, boolean log) {
         this.i = i;
         this.commonReads = commonReads;
         this.struct = struct;
         this.src = src;
         iter = new AtomicInteger();
         this.log = log;
+        this.start = start;
+        this.end = end;
     }
 
     @Override
@@ -30,7 +35,16 @@ public class CommonReadsPacbioParallelTask implements Callable<Boolean> {
             if (iter.incrementAndGet() % 100 == 0)
                 System.out.print("\r" + iter.get());
         }
+        if(i < start || i > end){
+            return null;
+        }
         for (int j = i; j < commonReads.length; j++) {
+            if (j < start){
+                continue;
+            }
+            if (j> end){
+                break;
+            }
             if (i == j) {
                 commonReads[i][j] = src.reads.length - struct.rowN[i].length;
                 continue;

@@ -43,6 +43,9 @@ There are several available parameters:
 
 - ``-t`` - minimum threshold for O22 value. Default is 10
 - ``-tf`` - minimum threshold for 022 frequency relative to the reads' coverage. Default value os 0.05. For more sensitive algorithm work decrease this parameter (may significantly increase runtime for diverse samples). **Note** Haplotypes with frequency <tf won't get into output
+- ``-sp`` - start position to search for SNPs (0-based, inclusive). If you hae a large genome, but is interested only in SNPS in specific region you can specify the range. It will make the program faster and more precise. 
+But the output haplotypes still will be the whole genome(you can cut them using -os -oe parameters) - for example see below. Default value is 0
+- ``-ep`` - end position to search for SNPs (0-based, inclusive). See -sp above
 - ``-log`` - some log data will be in console with this flag(no value needed)
 - ``-cm`` - cliques merging algorithm. Two values: 'accurate', 'fast'. Default is 'accurate'. Accurate may lead to exponential explosion of cliques number.
 That's why with large number of SNPs it may be useful to use fast polynomial algorithm with lower quality.
@@ -57,9 +60,9 @@ Default value is 10800 (3 hours). In most of the cases the program cannot finish
     - ``short`` corresponds to ``>{id}_fr_{frequency}`` (e.g. ``>1_fr_0.5820184401895632``)
     - ``extended`` corresponds to ``>{sample_name}_{id}_{frequency}`` (e.g. ``>HIV_sample_1_0.92``). By default, the precision for 
     frequency is 2, it can be customized by adding the number to extended. For example, ``-fdf extended4`` will output ``>HIV_sample_1_0.9239``.
-- ``-os`` - output start position. If provided will cut the output from 0 to given position in haplotypes, variant calling
-- ``-oe`` - output end position. If provided will cut the output from given position till the end in haplotypes, variant calling. 
-For example, ``-os 100 -oe 700`` will output haplotypes only for positions [100, 700] or include SNPs in variant calling only inside this range
+- ``-os`` - output start position(inclusive). If provided will cut the output from 0 to given position in haplotypes, variant calling
+- ``-oe`` - output end position(exclusive). If provided will cut the output from given position till the end in haplotypes, variant calling. 
+For example, ``-os 100 -oe 700`` will output haplotypes only for positions [100, 700) or include SNPs in variant calling only inside this range
 - ``-rn`` - (no value needed) if present will create a file "<sample_name>_read_names.txt" with the reads assigned by the tool to all found haplotypes.
 Format is the following:
 ```
@@ -79,6 +82,36 @@ Thus, this file cannot be viewed as very precise as it is, but can be used for a
 These two parameters are significant, since they put a border in trade-off between precision and recall. 
 By default, they are set to detect moderate haplotypes (>5%). If it is know that data is not very noisy and variants with frequency >1% are of interest, then **-tf** should be around **0.01**, **-t** is optional and based on coverage.
 
+### Difference between -sp -ep and -os -oe parameters
+The (-sp,-ep) range doesn't affect the output, it affects only the region where the tool will work. And (-os, -oe) will cut the output without any affect on the program workflow.
+Example:
+if there are four haplotypes (and none of sp,ep,os,oe parameters specified):
+```
+AAAAAA
+ACAAAC
+AACCAA
+AATGAA
+```
+(-sp=2, -ep=4). Output (second one disappear since SNPs are out of range and it won't be discovered):
+```
+AAAAAA
+AACCAA
+AATGAA
+```
+
+(-sp=2, -ep=4, -os=2, -oe=5):
+```
+AAA
+ACC
+TGA
+```
+(-os=2, -oe=5). It will only cut the haplotypes so you will see the duplicate here:
+```
+AAA
+AAA
+CCA
+TGA
+```
 ### Usage example
 
 ``java -jar clique-snv.jar -m snv-pacbio``
@@ -241,6 +274,10 @@ the runtime on powerful machines
 1.5.5
 - Change output from txt to json for ease of parsing
 - "-tl"  parameter to set time limit
+
+1.5.6
+- "-sp", "-ep" parameters
+- more error codes and messages in JSON output
 
 ## Any questions
 With any questions. please, contact: v.tsyvina@gmail.com

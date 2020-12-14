@@ -43,12 +43,18 @@ public abstract class AbstractSNV {
     public double LOG_THRESHOLD;
     public boolean USE_LOG_PVALUE;
 
+    // the range in which to reach for snps
+    public final int START_POSITION;
+    public final int END_POSITION;
+
     AbstractSNV(int minThreshold, double minFreq) {
         this.MIN_O22_THRESHOLD = minThreshold;
         this.MIN_O22_FREQ = minFreq;
         this.LOG_THRESHOLD = Double.parseDouble(Start.settings.getOrDefault("-lt", "200"));
         this.USE_LOG_PVALUE = Start.settings.get("-lp") != null;
         this.HAPLOTYPE_CUT_THRESHOLD = Double.parseDouble(Start.settings.getOrDefault("-tf", "0.05"));
+        this.START_POSITION = Integer.parseInt(Start.settings.getOrDefault("-sp", "0"));
+        this.END_POSITION = Integer.parseInt(Start.settings.getOrDefault("-ep", "1000000"));
     }
 
     /**
@@ -402,10 +408,12 @@ public abstract class AbstractSNV {
         log("Average clique size " + average);
         //average < 2.001 && cliques.size() > 500
         // TODO think about it!
-//        if(cliques.size() > 500){
-//            log("Too much cliques to process");
-//            return new HashSet<>();
-//        }
+        if(cliques.size() > 600){
+            log("Too much cliques to process");
+            Start.errorMessage = "Too much cliques to process";
+            Start.errorCode = 1;
+            return new HashSet<>();
+        }
         // adjacency list for relations between cliques - at least one edge between them and no 'no edges'
         List<Set<Integer>> realCliqueEdges = new ArrayList<>();
         for (int i = 0; i < cliques.size(); i++) {
@@ -455,9 +463,11 @@ public abstract class AbstractSNV {
             double degree = cAdList.stream().mapToInt(Set::size).average().getAsDouble();
             log("Average clique degree " + degree + " start compute cliques");
             // TODO think about it
-//            if (degree > 150){
-//                return new HashSet<>();
-//            }
+            if (degree > 200){
+                Start.errorMessage = "Average clique degree is too high "+ degree;
+                Start.errorCode = 2;
+                return new HashSet<>();
+            }
         }
         st = System.currentTimeMillis();
         Set<Set<Integer>> cliqueCliques = AlgorithmUtils.findCliques(cAdList);
@@ -469,9 +479,11 @@ public abstract class AbstractSNV {
         Set<Set<Integer>> mergedCliques = new HashSet<>();
         log("Cliques of cliques size " + cliqueCliques.size());
         // TODO think about it
-//        if (cliqueCliques.size() > 500){
-//            return new HashSet<>();
-//        }
+        if (cliqueCliques.size() > 500){
+            Start.errorMessage = "Too many cliques of cliques "+cliqueCliques.size();
+            Start.errorCode = 3;
+            return new HashSet<>();
+        }
         boolean fl = cliqueCliques.size() < 100;
         //merge cliques but if they are from different components then merge only for components (if A,B from 1, and C,D from 2. Then it will merge only A with B and C with D)
         for (Set<Integer> setOfCliquesToMerge : cliqueCliques) {

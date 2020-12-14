@@ -128,7 +128,11 @@ public class SNVPacBioMethod extends AbstractSNV {
         List<SNVResultContainer> snvResultContainers = processCliques(cliques, srcStruct, sample);
         log(" - DONE");
         snvResultContainers = snvResultContainers.stream().filter(ha -> ha.frequency > HAPLOTYPE_CUT_THRESHOLD).sorted((s1, s2) -> -Double.compare(s1.frequency, s2.frequency)).collect(Collectors.toList());
-
+        if (snvResultContainers.size() == 0){
+            snvResultContainers = getDefaultHaplotype();
+            Start.errorCode = 5;
+            Start.errorMessage = "All haplotypes got too low freqeuncy";
+        }
         outputAnswerChecking(snvResultContainers);
         return snvResultContainers;
     }
@@ -297,10 +301,16 @@ public class SNVPacBioMethod extends AbstractSNV {
             if (l < 10) {
                 continue;
             }
+            int first = i / minorCount;
+            if (first < START_POSITION || first > END_POSITION){
+                continue;
+            }
             int[] hits = getHits(struct, struct.rowMinors[i], splittedLength);
             for (int j = 0; j < hits.length; j++) {
-                int first = i / minorCount;
                 int second = j / minorCount;
+                if ( second < START_POSITION || second > END_POSITION){
+                    continue;
+                }
                 //skip small amount of hits
                 if (hitsFitThreshold(hits[j], getCommonReadsCount(i, j)) && Math.abs(first - second) > CLOSE_POSITIONS_THRESHOLD) {
                     //get unsplitted columns, minors, o_kl
@@ -375,12 +385,10 @@ public class SNVPacBioMethod extends AbstractSNV {
         if (commonReads[0][0] == -1) {
             //commonReads = new long[sample.referenceLength][sample.referenceLength];
             log("Common reads matrix calculation");
-
-            int cores = Start.threadsNumber();
             List<Callable<Boolean>> tasks = new ArrayList<>();
 
             for (int i = 0; i < commonReads.length; i++) {
-                tasks.add(new CommonReadsPacbioParallelTask(i, commonReads, srcStruct, sample, log));
+                tasks.add(new CommonReadsPacbioParallelTask(i, commonReads, srcStruct, sample, START_POSITION, END_POSITION, log));
             }
             try {
                 List<Future<Boolean>> futures = Start.executor.invokeAll(tasks);

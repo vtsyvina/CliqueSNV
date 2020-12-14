@@ -14,6 +14,7 @@ import edu.gsu.model.PairEndRead;
 import edu.gsu.model.SNVResultContainer;
 import edu.gsu.model.Sample;
 import edu.gsu.util.DataReader;
+import edu.gsu.util.Utils;
 import edu.gsu.util.VCFWriter;
 
 import java.io.File;
@@ -24,6 +25,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +42,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class Start {
     public static final int DEFAULT_TIMEOUT = 3600 * 3;
     public static String errorMessage = "none";
+    // 1 - too much cliques; 2 - average clique degree is too high; 3 - too many cliques of cliques; 4 - timeout reached; 5 all haplotypes are of too low frequency
+    public static int errorCode = 0;
     private static boolean log;
     public static Map<String, String> settings = new HashMap<>();
     public static Sample answer;
@@ -84,6 +88,12 @@ public class Start {
                         break;
                     case "consensus-pacbio":
                         consensus("pacbio");
+                        break;
+                    case "profile-illumina":
+                        profile("illumina");
+                        break;
+                    case "profile-pacbio":
+                        profile("pacbio");
                         break;
                     default:
                         helpOutput(settings.get("-m"), true);
@@ -134,11 +144,14 @@ public class Start {
         } catch (InterruptedException | ExecutionException e) {
             future.cancel(true);
             e.printStackTrace();
-            errorMessage = "Runtime error";
+            if (errorMessage.equals("none")){
+                errorMessage = "Runtime error";
+            }
             haplotypes = snvIlluminaMethod.getDefaultHaplotype();
         } catch (TimeoutException e) {
             System.out.println("The time limit has been reached");
             errorMessage = "Timeout reached";
+            errorCode = 4;
             future.cancel(true);
             e.printStackTrace();
             haplotypes = snvIlluminaMethod.getDefaultHaplotype();
@@ -243,6 +256,40 @@ public class Start {
         c.add(new SNVResultContainer("", (List<PairEndRead>) null, null, consensus));
         writeSNVResultsToFile(name + "_consensus", c, null, true);
     }
+
+    private static void profile(String method) throws IOException {
+        String snvOutput = settings.getOrDefault("-outDir", "snv_output/");
+        if (!snvOutput.endsWith("/")) {
+            snvOutput += "/";
+        }
+        File file = new File(settings.getOrDefault("-in", "data/PacBio_reads/reads.sam"));
+        if (!file.exists()) {
+            System.out.printf("Input file %s does not exists%n", file.getCanonicalPath());
+            return;
+        }
+        int[][] profile;
+        String name = "";
+        String alphabet = "ACGT-N";
+        if (method.equals("pacbio")) {
+            Sample sample = DataReader.getPacBioReads(file);
+            profile = Utils.countCoverage(sample, alphabet);
+            name = sample.name;
+        } else {
+            IlluminaSNVSample sample = DataReader.getIlluminaPairedReads(file);
+            profile = Utils.countCoverage(sample, alphabet);
+            name = sample.name;
+        }
+        Path path = preparePath(snvOutput+(name == null ? "profile.txt" : name + "_profile.txt"));
+        for (int i = 0; i < alphabet.length()-1; i++) {
+            StringBuilder builder = new StringBuilder();
+            for (int j = 0; j < profile[i].length; j++) {
+                builder.append(profile[i][j]).append("\t");
+            }
+            builder.append("\n");
+            Files.write(path, builder.toString().getBytes(), StandardOpenOption.APPEND);
+        }
+    }
+
 
     private static void imputation(boolean test) throws IOException, InterruptedException {
         long start;
@@ -401,6 +448,7 @@ public class Start {
         json.addProperty("version", getVersion());
         json.add("settings", jsonElement);
         json.addProperty("error", errorMessage);
+        json.addProperty("errorCode", errorCode);
         json.addProperty("foundHaplotypes", haplotypes.size());
         JsonArray haplArr = new JsonArray();
         for (int i = 0; i < haplotypes.size(); i++) {

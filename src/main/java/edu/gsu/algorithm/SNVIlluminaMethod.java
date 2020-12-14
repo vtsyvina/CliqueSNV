@@ -203,6 +203,11 @@ public class SNVIlluminaMethod extends AbstractSNV {
         log("Freq before filtering" + Arrays.toString(freq));
         totalResults = totalResults.stream().filter(ha -> ha.frequency > HAPLOTYPE_CUT_THRESHOLD).sorted((s1, s2) -> -Double.compare(s1.frequency, s2.frequency)).collect(Collectors.toList());
         log("Haplotypes before return " + totalResults.size());
+        if (totalResults.size() == 0){
+            totalResults = getDefaultHaplotype();
+            Start.errorCode = 5;
+            Start.errorMessage = "All haplotypes got too low freqeuncy";
+        }
         outputAnswerChecking(totalResults);
         //just for debug
 
@@ -480,7 +485,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
             List<Callable<Boolean>> tasks = new ArrayList<>();
 
             for (int i = 0; i < sample.referenceLength; i++) {
-                tasks.add(new CommonReadsIlluminaParallelTask(i, commonReads, struct, sample, log));
+                tasks.add(new CommonReadsIlluminaParallelTask(i, commonReads, struct, sample, START_POSITION, END_POSITION, log));
             }
             try {
                 List<Future<Boolean>> futures = Start.executor.invokeAll(tasks);

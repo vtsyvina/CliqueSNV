@@ -33,11 +33,14 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
     }
 
     @Override
-    public List<EdgeSummary> call() throws Exception {
+    public List<EdgeSummary> call() {
         List<EdgeSummary> result = new ArrayList<>();
         int l = struct.rowMinors[allele].length;
         int first = allele / minorCount;
         if (l < 10) {
+            return result;
+        }
+        if (first < method.START_POSITION || first > method.END_POSITION){
             return result;
         }
         int[] hits = method.getHits(struct, struct.rowMinors[allele], sample.referenceLength * minorCount);
@@ -61,6 +64,9 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
             }
             //skip small amount of hits
             int second = j / minorCount;
+            if (second < method.START_POSITION || second > method.END_POSITION){
+                continue;
+            }
             long reads = commonReads[first][second];
             if ((first != second && method.hitsFitThreshold(hits[j], reads)
                     && Math.abs(first - second) > method.CLOSE_POSITIONS_THRESHOLD)) {
