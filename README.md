@@ -1,7 +1,7 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 1.5.5, October 2020)
+Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 1.5.6, December 2020)
 
 ## How to build
 
