@@ -408,7 +408,7 @@ public class Start {
         if (!fastaOnly) {
             path = preparePath(snvOutput + (name == null ? "snv_output.json" : name + ".json"));
             System.out.println("Results are available in: " + path.toFile().getCanonicalPath());
-            Files.write(path, createJson(haplotypes, name).getBytes(), StandardOpenOption.WRITE);
+            Files.write(path, createJson(haplotypesCopy, name).getBytes(), StandardOpenOption.WRITE);
 
         }
         path = preparePath(snvOutput + (name == null ? "snv_output.fasta" : name + ".fasta"));
