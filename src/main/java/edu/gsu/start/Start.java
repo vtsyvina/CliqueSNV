@@ -400,7 +400,11 @@ public class Start {
         Path path;
         int start = Integer.parseInt(Start.settings.getOrDefault("-os", "0"));
         int end = Integer.parseInt(Start.settings.getOrDefault("-oe", String.valueOf(haplotypes.get(0).haplotype.length())));
-        haplotypesCopy.forEach(h -> h.haplotype = h.haplotype.substring(start, end));
+        if (end > haplotypes.get(0).haplotype.length()){
+            end = haplotypes.get(0).haplotype.length();
+        }
+        int finalEnd = end;
+        haplotypesCopy.forEach(h -> h.haplotype = h.haplotype.substring(start, finalEnd));
         if (!fastaOnly) {
             path = preparePath(snvOutput + (name == null ? "snv_output.json" : name + ".json"));
             System.out.println("Results are available in: " + path.toFile().getCanonicalPath());
@@ -457,7 +461,7 @@ public class Start {
             h.addProperty("frequency", haplotype.frequency);
             h.addProperty("name", getHaplotypeName(name, i, haplotype.frequency));
             h.addProperty("snps", haplotype.haploClique.toString());
-            h.addProperty("sourceClique", haplotype.haploClique.toString());
+            h.addProperty("sourceClique", haplotype.sourceClique.toString());
             h.addProperty("haplotype", haplotype.haplotype);
             haplArr.add(h);
         }

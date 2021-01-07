@@ -475,7 +475,7 @@ public class SNVPacBioMethod extends AbstractSNV {
             }
             Clique haplotypeClique = new Clique(snps, consensus());
             SNVResultContainer container = new SNVResultContainer(c.getKey(), c.getValue(), haplotypeClique, haplotype);
-            container.sourceClique = getSourceClique(allPositionsInCliques, cliquesSet, c.getKey(), container);
+            container.sourceClique = getSourceClique(allPositionsInCliques, cliquesSet, c.getKey());
             return container;
         }).collect(Collectors.toList());
         Map<String, SNVResultContainer> merge = new HashMap<>();

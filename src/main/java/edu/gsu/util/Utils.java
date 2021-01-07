@@ -140,11 +140,14 @@ public class Utils {
     }
 
     public static int[][] countCoverage(IlluminaSNVSample sample, String alphabet){
-        List<PairEndRead> reads = sample.reads;
+        return countCoverage(sample.reads, alphabet, sample.referenceLength);
+    }
+
+    public static int[][] countCoverage(List<PairEndRead> reads, String alphabet, int referenceLength){
         if (reads.size() == 0) {
             return new int[0][alphabet.length()];
         }
-        int[][] count = new int[alphabet.length()][sample.referenceLength];
+        int[][] count = new int[alphabet.length()][referenceLength];
         reads.forEach(r -> {
             for (int i = 0; i < r.l.length(); i++) {
                 count[convertLetterToDigit(r.l.charAt(i), alphabet)][i + r.lOffset]++;
@@ -337,6 +340,16 @@ public class Utils {
                 : (b /= 1000) < 999_950L ? String.format("%s%.1fT", s, b / 1e3)
                 : (b /= 1000) < 999_950L ? String.format("%s%.1fP", s, b / 1e3)
                 : String.format("%s%.1f EB", s, b / 1e6);
+    }
+
+    public static int[][] rotateMatrix(int[][] x){
+        int[][] result = new int[x[0].length][x.length];
+        for (int i = 0; i < result.length; i++) {
+            for (int j = 0; j < result[0].length; j++) {
+                result[i][j] = x[j][i];
+            }
+        }
+        return  result;
     }
 
     public static int hammingDistance(String x, String y){

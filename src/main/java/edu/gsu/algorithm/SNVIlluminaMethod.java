@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 public class SNVIlluminaMethod extends AbstractSNV {
     public static final int minorCount = al.length() - 2;
     public static final int MINIMUM_COVERAGE_FOR_HAPLOTYPE_SNP = 5;
+    public static final int MINIMUM_COVERAGE_FOR_CONSENSUS_SNP = 3 * MINIMUM_COVERAGE_FOR_HAPLOTYPE_SNP;
     public int MAX_EDGES_NUMBER;
     private int[][] commonReads;
     private boolean maxEdgesLimitReached = false;
@@ -658,6 +659,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                 }
             }
             String haplotype = Utils.consensus(haploProfile, al);
+            Clique sourceClique = getSourceClique(allPositionsInCliques, cliquesSet, s.getKey());
             //rare case where all reads have N on a certain position
             StringBuilder str = new StringBuilder(haplotype);
             int[][] count = Utils.countCoverage(snvSample, al);
@@ -672,7 +674,10 @@ public class SNVIlluminaMethod extends AbstractSNV {
                     str.setCharAt(i, consensus().charAt(i));
                 }
                 // some reads may be aligned wrongly or just have minor allele with tiny coverage(1-2 reads) that will give an SNP there
-                if (str.charAt(i) != consensus.charAt(i) && coverage[i] < MINIMUM_COVERAGE_FOR_HAPLOTYPE_SNP) {
+                // for consensus haplotype we want an additional check since reads  with consensus base can go to another clique and for consensus we will assign only "trash" reads
+                if (str.charAt(i) != consensus.charAt(i) && coverage[i] < MINIMUM_COVERAGE_FOR_HAPLOTYPE_SNP
+                || (str.charAt(i) != consensus.charAt(i) && sourceClique.snps.size() == 0 && count[al.indexOf(str.charAt(i))][i] < MINIMUM_COVERAGE_FOR_CONSENSUS_SNP)
+                ) {
                     log("prevented at pos " + i + " to get " + str.charAt(i) + " with coverage " + coverage[i]);
                     str.setCharAt(i, consensus().charAt(i));
                 }
@@ -686,7 +691,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
             }
             Clique haplotypeClique = new Clique(snps, consensus());
             SNVResultContainer container = new SNVResultContainer(s.getKey(), cluster, haplotypeClique, haplotype);
-            container.sourceClique = getSourceClique(allPositionsInCliques, cliquesSet, s.getKey(), container);
+            container.sourceClique = sourceClique;
             return container;
         }).collect(Collectors.toList());
         Map<String, SNVResultContainer> merge = new HashMap<>();

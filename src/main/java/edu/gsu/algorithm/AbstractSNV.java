@@ -214,8 +214,8 @@ public abstract class AbstractSNV {
     }
 
     //TODO refactor this
-    Clique getSourceClique(List<Integer> allPositionsInCliques, Set<Clique> cliquesSet, String cliqueString, SNVResultContainer container) {
-        Clique sourceClique = container.sourceClique;
+    Clique getSourceClique(List<Integer> allPositionsInCliques, Set<Clique> cliquesSet, String cliqueString) {
+        Clique sourceClique = null;
         for (Clique clique : cliquesSet) {
             boolean fl = true;
             for (int i = 0; i < clique.snps.size(); i++) {
