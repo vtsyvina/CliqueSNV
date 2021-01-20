@@ -43,7 +43,7 @@ public class Utils {
     public static int convertLetterToDigit(char c, String alphabet) {
         int i = alphabet.indexOf(c);
         // 5 == N, if there is some trash letters for some reason
-        return i == -1? 5 : i;
+        return i == -1 ? 5 : i;
     }
 
     public static char convertIntToLetter(int i) {
@@ -109,7 +109,7 @@ public class Utils {
         char[] majors = new char[profile[0].length];
         for (int j = 0; j < profile[0].length; j++) {
             int majorAllele = Utils.getMajorAllele(profile, j);
-            majors[j] = majorAllele == -1 ? '-' : alphabet.charAt(majorAllele);
+            majors[j] = majorAllele == -1 ? 'N' : alphabet.charAt(majorAllele);
         }
         return new String(majors);
     }
@@ -118,32 +118,46 @@ public class Utils {
         return profile(sample, DEFAULT_ALPHABET);
     }
 
-    public static double[][] profile(Sample sample, String alphabet) {
+    public static double[][] profile(Sample sample, int[] splitPortion, String alphabet) {
         String[] sequences = sample.reads;
         if (sequences.length == 0) {
             return new double[0][alphabet.length()];
         }
         int l = sequences[0].length();
-        int[][] count = new int[alphabet.length()][l];
-        for (String s : sequences) {
+        double[][] count = new double[alphabet.length()][l];
+        for (int rIdx = 0, sequencesLength = sequences.length; rIdx < sequencesLength; rIdx++) {
+            String s = sequences[rIdx];
             for (int i = 0; i < s.length(); i++) {
-                count[convertLetterToDigit(s.charAt(i), alphabet)][i]++;
+                count[convertLetterToDigit(s.charAt(i), alphabet)][i] += 1. / splitPortion[rIdx];
             }
         }
         double[][] result = new double[alphabet.length()][l];
-        for (int i = 0; i < alphabet.length(); i++) {
-            for (int j = 0; j < l; j++) {
-                result[i][j] = count[i][j] / (double) sequences.length;
+        for (int j = 0; j < l; j++) {
+            double sum = 0;
+            for (int i = 0; i < alphabet.length(); i++) {
+                sum+= count[i][j];
+            }
+            if (sum < 0.0001){
+                sum = 1;
+            }
+            for (int i = 0; i < alphabet.length(); i++) {
+                result[i][j] = count[i][j] / sum;
             }
         }
         return result;
     }
 
-    public static int[][] countCoverage(IlluminaSNVSample sample, String alphabet){
+    public static double[][] profile(Sample sample, String alphabet) {
+        int[] splitPortion = new int[sample.reads.length];
+        Arrays.fill(splitPortion, 1);
+        return profile(sample, splitPortion, alphabet);
+    }
+
+    public static int[][] countCoverage(IlluminaSNVSample sample, String alphabet) {
         return countCoverage(sample.reads, alphabet, sample.referenceLength);
     }
 
-    public static int[][] countCoverage(List<PairEndRead> reads, String alphabet, int referenceLength){
+    public static int[][] countCoverage(List<PairEndRead> reads, String alphabet, int referenceLength) {
         if (reads.size() == 0) {
             return new int[0][alphabet.length()];
         }
@@ -159,7 +173,7 @@ public class Utils {
         return count;
     }
 
-    public static int[][] countCoverage(Sample sample, String alphabet){
+    public static int[][] countCoverage(Sample sample, String alphabet) {
         if (sample.reads.length == 0) {
             return new int[0][alphabet.length()];
         }
@@ -167,7 +181,7 @@ public class Utils {
         for (String read : sample.reads) {
             for (int i = 0; i < read.length(); i++) {
                 int idx = convertLetterToDigit(read.charAt(i), alphabet);
-                if (idx == 5){
+                if (idx == 5) { //'N'
                     continue;
                 }
                 count[idx][i]++;
@@ -175,6 +189,37 @@ public class Utils {
 
         }
         return count;
+    }
+
+    public static double[][] profile(IlluminaSNVSample sample, int[] splitPortion, String alphabet) {
+        List<PairEndRead> reads = sample.reads;
+        if (reads.size() == 0) {
+            return new double[0][alphabet.length()];
+        }
+        double[][] count = new double[alphabet.length()][sample.referenceLength];
+        for (int rIdx = 0; rIdx < reads.size(); rIdx++) {
+            PairEndRead r = reads.get(rIdx);
+            for (int i = 0; i < r.l.length(); i++) {
+                count[convertLetterToDigit(r.l.charAt(i), alphabet)][i + r.lOffset] += 1. / splitPortion[rIdx];
+            }
+            for (int i = 0; i < r.r.length(); i++) {
+                count[convertLetterToDigit(r.r.charAt(i), alphabet)][i + r.rOffset] += 1. / splitPortion[rIdx];
+            }
+        }
+        double[][] result = new double[alphabet.length()][sample.referenceLength];
+        for (int i = 0; i < count[0].length; i++) {
+            double sum = 0;
+            for (double[] aCount : count) {
+                sum += aCount[i];
+            }
+            if (sum < 0.001) {
+                sum = 1;
+            }
+            for (int j = 0; j < count.length; j++) {
+                result[j][i] = count[j][i] / sum;
+            }
+        }
+        return result;
     }
 
     public static double[][] profile(IlluminaSNVSample sample, String alphabet) {
@@ -333,7 +378,7 @@ public class Utils {
     public static String humanReadableSI(long bytes) {
         String s = bytes < 0 ? "-" : "";
         long b = bytes == Long.MIN_VALUE ? Long.MAX_VALUE : Math.abs(bytes);
-        return b < 1000L ? bytes +""
+        return b < 1000L ? bytes + ""
                 : b < 999_950L ? String.format("%s%.1fk", s, b / 1e3)
                 : (b /= 1000) < 999_950L ? String.format("%s%.1fM", s, b / 1e3)
                 : (b /= 1000) < 999_950L ? String.format("%s%.1fG", s, b / 1e3)
@@ -342,20 +387,20 @@ public class Utils {
                 : String.format("%s%.1f EB", s, b / 1e6);
     }
 
-    public static int[][] rotateMatrix(int[][] x){
+    public static int[][] rotateMatrix(int[][] x) {
         int[][] result = new int[x[0].length][x.length];
         for (int i = 0; i < result.length; i++) {
             for (int j = 0; j < result[0].length; j++) {
                 result[i][j] = x[j][i];
             }
         }
-        return  result;
+        return result;
     }
 
-    public static int hammingDistance(String x, String y){
+    public static int hammingDistance(String x, String y) {
         int c = 0;
         for (int i = 0; i < x.length(); i++) {
-            if(x.charAt(i) != y.charAt(i)){
+            if (x.charAt(i) != y.charAt(i)) {
                 c++;
             }
         }

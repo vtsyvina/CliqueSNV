@@ -1,7 +1,7 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 1.5.6, December 2020)
+Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 1.5.7, January 2021)
 
 ## How to build
 
@@ -43,6 +43,10 @@ There are several available parameters:
 
 - ``-t`` - minimum threshold for O22 value. Default is 10
 - ``-tf`` - minimum threshold for 022 frequency relative to the reads' coverage. Default value os 0.05. For more sensitive algorithm work decrease this parameter (may significantly increase runtime for diverse samples). **Note** Haplotypes with frequency <tf won't get into output
+- ``-fc`` - "true"\"false" flag that tells if the tool should do frequency correction. In diverse samples the frequency of frequent haplotypes can be underestimated
+  and less frequent haplotypes overestimated. If "true" the tool will apply frequency correction that should increase the specificity(default since ver 1.5.0). If "false" no additional correction is applied (default for versions prior 1.5.0). Default is "true"
+- ``-ch`` - "true"\"false" flag to cut haplotypes with estimated frequencies <"-tf" parameter. Default is "true" since version 1.5.0, "false" was default behavior in version prior 1.5.0
+- ``-el`` - edges limit in SNPs graph. More edges will make the algorithm more sensitive. Too much links in the graph can lead to exponential explosion in time when calculating cliques. In version 1.5.0 only up to -el most frequent edges(SNPs supported by the most number of reads) are chosen. Default is 700(no limit in versions prior to 1.5.0) - should work good for the absolute majority of samples.  
 - ``-sp`` - start position to search for SNPs (0-based, inclusive). If you hae a large genome, but is interested only in SNPS in specific region you can specify the range. It will make the program faster and more precise. 
 But the output haplotypes still will be the whole genome(you can cut them using -os -oe parameters) - for example see below. Default value is 0
 - ``-ep`` - end position to search for SNPs (0-based, inclusive). See -sp above
@@ -278,6 +282,10 @@ the runtime on powerful machines
 1.5.6
 - "-sp", "-ep" parameters
 - more error codes and messages in JSON output
+
+1.5.7
+- "-fc", "-ch" parameters to provide less conservative strategy as in versions 1.4.*
+- put 'N' instead of '-' in haplotypes if the position is not covered by any read
 
 ## Any questions
 With any questions. please, contact: v.tsyvina@gmail.com

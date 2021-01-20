@@ -526,6 +526,14 @@ public class Start {
         if (settings.get("-help") != null) {
             helpOutput(null, false);
         }
+        // cut haplotypes below -tf value
+        if (!settings.containsKey("-ch")){
+            settings.put("-ch","true");
+        }
+        // frequency correction with several runs with different -tf parameter
+        if(!settings.containsKey("-fc")){
+            settings.put("-fc","true");
+        }
         log = settings.containsKey("-log");
     }
 

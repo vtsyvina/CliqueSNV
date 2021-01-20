@@ -13,9 +13,9 @@ import edu.gsu.start.Start;
 import edu.gsu.util.HammingDistance;
 import edu.gsu.util.Utils;
 import edu.gsu.util.builders.SNVStructureBuilder;
+import org.apache.commons.math3.util.Pair;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -127,8 +127,10 @@ public class SNVPacBioMethod extends AbstractSNV {
         // divide by clusters and find haplotypes
         List<SNVResultContainer> snvResultContainers = processCliques(cliques, srcStruct, sample);
         log(" - DONE");
-        snvResultContainers = snvResultContainers.stream().filter(ha -> ha.frequency > HAPLOTYPE_CUT_THRESHOLD).sorted((s1, s2) -> -Double.compare(s1.frequency, s2.frequency)).collect(Collectors.toList());
-        if (snvResultContainers.size() == 0){
+        if (Start.settings.get("-ch").equals("true")) {
+            snvResultContainers = snvResultContainers.stream().filter(ha -> ha.frequency > HAPLOTYPE_CUT_THRESHOLD).sorted((s1, s2) -> -Double.compare(s1.frequency, s2.frequency)).collect(Collectors.toList());
+        }
+        if (snvResultContainers.size() == 0) {
             snvResultContainers = getDefaultHaplotype();
             Start.errorCode = 5;
             Start.errorMessage = "All haplotypes got too low freqeuncy";
@@ -302,13 +304,13 @@ public class SNVPacBioMethod extends AbstractSNV {
                 continue;
             }
             int first = i / minorCount;
-            if (first < START_POSITION || first > END_POSITION){
+            if (first < START_POSITION || first > END_POSITION) {
                 continue;
             }
             int[] hits = getHits(struct, struct.rowMinors[i], splittedLength);
             for (int j = 0; j < hits.length; j++) {
                 int second = j / minorCount;
-                if ( second < START_POSITION || second > END_POSITION){
+                if (second < START_POSITION || second > END_POSITION) {
                     continue;
                 }
                 //skip small amount of hits
@@ -454,11 +456,16 @@ public class SNVPacBioMethod extends AbstractSNV {
 
         Set<Clique> cliquesSet = new HashSet<>();
         cliques.forEach(c -> cliquesSet.add(new Clique(c, consensus())));
-        Map<String, Map<Integer, String>> clusters = buildClusters(src, allPositionsInCliques, allCliquesCharacters);
+//        Map<String, Map<Integer, String>> clusters = buildClusters(src, allPositionsInCliques, allCliquesCharacters);
+        Map<String, List<Pair<Integer, Integer>>> clustersRelative = buildClustersRelative(src, allPositionsInCliques, allCliquesCharacters);
         //skip clusters with less than 10 reads. Do some stuff for transforming output into human-friendly format
-        List<SNVResultContainer> haplotypes = clusters.entrySet().stream().filter(s -> s.getValue().size() > MINIMUM_READS_NUMBER_IN_CLUSTER).map(c -> {
-            Collection<String> cluster = c.getValue().values();
-            String haplotype = Utils.consensus(cluster.toArray(new String[cluster.size()]), al);
+        List<SNVResultContainer> haplotypes = clustersRelative.entrySet().stream().filter(s -> s.getValue().size() > MINIMUM_READS_NUMBER_IN_CLUSTER).map(c -> {
+            String[] reads = c.getValue().stream().map(e -> sample.reads[e.getKey()]).toArray(String[]::new);
+            // the number of cliques in which each read goes
+            int[] splitPortions = c.getValue().stream().mapToInt(e -> e.getValue()).toArray();
+            Sample tmpSample = new Sample("tmp", reads);
+            double[][] profile = Utils.profile(tmpSample, splitPortions, al);
+            String haplotype = Utils.consensus(profile, al);
             //rare case where all reads have N on a certain position
             StringBuilder str = new StringBuilder(haplotype);
             for (int i = 0; i < str.length(); i++) {
@@ -474,7 +481,9 @@ public class SNVPacBioMethod extends AbstractSNV {
                 }
             }
             Clique haplotypeClique = new Clique(snps, consensus());
-            SNVResultContainer container = new SNVResultContainer(c.getKey(), c.getValue(), haplotypeClique, haplotype);
+            Map<Integer, String> pacBioCluster = new HashMap<>();
+            c.getValue().forEach(e -> pacBioCluster.put(e.getKey(), sample.reads[e.getKey()]));
+            SNVResultContainer container = new SNVResultContainer(c.getKey(), pacBioCluster, haplotypeClique, haplotype);
             container.sourceClique = getSourceClique(allPositionsInCliques, cliquesSet, c.getKey());
             return container;
         }).collect(Collectors.toList());
@@ -507,7 +516,7 @@ public class SNVPacBioMethod extends AbstractSNV {
     }
 
     /**
-     * Build read clusters based on cliques. Each read will go to nearest clique in terms of Hamming distance
+     * Build read clusters based on cliques. Each read will go to nearest clique in terms of Hamming distance divided by the number of nearest cliques
      *
      * @param src                   Source sample
      * @param allPositionsInCliques sorted array or all positions with at least one clique
@@ -515,18 +524,10 @@ public class SNVPacBioMethod extends AbstractSNV {
      *                              Has consensus allele if clique doesn't include particular position from allPositionsInCliques
      * @return Map with clusters, where key is string of clique characters, value is a set of reads
      */
-    private Map<String, Map<Integer, String>> buildClusters(Sample src, List<Integer> allPositionsInCliques, List<String> allCliquesCharacters) {
-        Map<String, Map<Integer, String>> clusters = new HashMap<>();
-        allCliquesCharacters.forEach(s -> clusters.put(s, new HashMap<>()));
-        class DistanceContainer {
-            private int distance;
-            private int coincidences;
+    private Map<String, List<Pair<Integer, Integer>>> buildClustersRelative(Sample src, List<Integer> allPositionsInCliques, List<String> allCliquesCharacters) {
+        Map<String, List<Pair<Integer, Integer>>> clusters = new HashMap<>();
+        allCliquesCharacters.forEach(s -> clusters.put(s, new ArrayList<>()));
 
-            private DistanceContainer(int distance, int coincidences) {
-                this.distance = distance;
-                this.coincidences = coincidences;
-            }
-        }
         //dirty hack to find consensus clique since it should be processed separately
         String consensusClique = "";
         for (String characters : allCliquesCharacters) {
@@ -545,7 +546,6 @@ public class SNVPacBioMethod extends AbstractSNV {
         String[] reads = src.reads;
         for (int readIndex = 0; readIndex < reads.length; readIndex++) {
             String s = reads[readIndex];
-            List<DistanceContainer> distancesFromCliques = new ArrayList<>();
             List<Integer> minI = new ArrayList<>();
             int min = 1_000_000;
             for (int i = 0; i < allCliquesCharacters.size(); i++) {
@@ -554,12 +554,12 @@ public class SNVPacBioMethod extends AbstractSNV {
                 int coincidences = 0;
                 boolean isConsensusClique = c.equals(consensusClique);
                 for (int j = 0; j < allPositionsInCliques.size(); j++) {
-                    if (s.charAt(allPositionsInCliques.get(j)) != c.charAt(j)) {
-                        d++;
+                    char charAtPosition = s.charAt(allPositionsInCliques.get(j));
+                    if (charAtPosition == 'N') {
+                        continue;
                     }
-                    //coincidence with current clique
-                    if (c.charAt(j) != consensus().charAt(allPositionsInCliques.get(j))) {
-                        coincidences++;
+                    if (charAtPosition != c.charAt(j)) {
+                        d++;
                     }
                     //coincidence with current clique
                     if (c.charAt(j) != consensus().charAt(allPositionsInCliques.get(j))) {
@@ -570,19 +570,90 @@ public class SNVPacBioMethod extends AbstractSNV {
                         coincidences++;
                     }
                 }
-                if (coincidences != d && d < min) {
+                if (coincidences != d && d < min && coincidences > 0) {
                     min = d;
                     minI = new ArrayList<>();
                 }
-                if (d == min) {
+                if (d == min && coincidences > 0) {
+                    minI.add(i);
+                }
+            }
+
+            if (!minI.isEmpty()) {
+                int finalReadIndex = readIndex;
+                List<Integer> finalMinI = minI;
+                minI.forEach(i -> clusters.get(allCliquesCharacters.get(i)).add(new Pair<>(finalReadIndex, finalMinI.size())));
+            }
+        }
+        return clusters;
+    }
+
+    /**
+     * Build read clusters based on cliques. Each read will go to nearest clique in terms of Hamming distance
+     *
+     * @param src                   Source sample
+     * @param allPositionsInCliques sorted array or all positions with at least one clique
+     * @param allCliquesCharacters  characters in cliques according to allPositionsInCliques.
+     *                              Has consensus allele if clique doesn't include particular position from allPositionsInCliques
+     * @return Map with clusters, where key is string of clique characters, value is a set of reads
+     */
+    private Map<String, Map<Integer, String>> buildClusters(Sample src, List<Integer> allPositionsInCliques, List<String> allCliquesCharacters) {
+        Map<String, Map<Integer, String>> clusters = new HashMap<>();
+        allCliquesCharacters.forEach(s -> clusters.put(s, new HashMap<>()));
+
+        //dirty hack to find consensus clique since it should be processed separately
+        String consensusClique = "";
+        for (String characters : allCliquesCharacters) {
+            boolean fl = true;
+            for (int i = 0; i < characters.length(); i++) {
+                if (characters.charAt(i) != consensus().charAt(allPositionsInCliques.get(i))) {
+                    fl = false;
+                    break;
+                }
+            }
+            if (fl) {
+                consensusClique = characters;
+            }
+        }
+        // put all reads to appropriate container (Voronoi regions)
+        String[] reads = src.reads;
+        for (int readIndex = 0; readIndex < reads.length; readIndex++) {
+            String s = reads[readIndex];
+            List<Integer> minI = new ArrayList<>();
+            int min = 1_000_000;
+            for (int i = 0; i < allCliquesCharacters.size(); i++) {
+                String c = allCliquesCharacters.get(i);
+                int d = 0;
+                int coincidences = 0;
+                boolean isConsensusClique = c.equals(consensusClique);
+                for (int j = 0; j < allPositionsInCliques.size(); j++) {
+                    char charAtPosition = s.charAt(allPositionsInCliques.get(j));
+                    if (charAtPosition == 'N') {
+                        continue;
+                    }
+                    if (charAtPosition != c.charAt(j)) {
+                        d++;
+                    }
+                    //coincidence with current clique
+                    if (c.charAt(j) != consensus().charAt(allPositionsInCliques.get(j))) {
+                        coincidences++;
+                    }
+                    //coincidence with any cluque snp. Only for consensus clique
+                    if (isConsensusClique) {
+                        coincidences++;
+                    }
+                }
+                if (coincidences != d && d < min && coincidences > 0) {
+                    min = d;
+                    minI = new ArrayList<>();
+                }
+                if (d == min && coincidences > 0) {
                     minI.add(i);
                 }
             }
             if (!minI.isEmpty()) {
                 int finalReadIndex = readIndex;
                 minI.forEach(i -> clusters.get(allCliquesCharacters.get(i)).put(finalReadIndex, s));
-            } else {
-                clusters.get(allCliquesCharacters.get(0)).put(readIndex, s);
             }
         }
         return clusters;

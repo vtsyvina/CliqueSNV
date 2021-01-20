@@ -14,6 +14,7 @@ import edu.gsu.model.Sample;
 import edu.gsu.start.Start;
 import edu.gsu.util.Utils;
 import edu.gsu.util.builders.SNVStructureBuilder;
+import org.apache.commons.math3.util.Pair;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -140,6 +141,9 @@ public class SNVIlluminaMethod extends AbstractSNV {
         // calculate haplotypes for different edge frequency limits
         // so that we will make sure that higher frequency haplotypes won't be contaminated with the noise
         double[] edgesLimit = {0.1, 0.05, 0.01};
+        if (Start.settings.get("-fc").equals("false")){
+            edgesLimit = new double[0];
+        }
         List<SNVResultContainer> totalResults = new ArrayList<>();
         log("Haplotypes before " + snvResultContainers.size());
         readAnswerHaplotypes();
@@ -202,9 +206,11 @@ public class SNVIlluminaMethod extends AbstractSNV {
             totalResults.get(i).frequency = freq[i];
         }
         log("Freq before filtering" + Arrays.toString(freq));
-        totalResults = totalResults.stream().filter(ha -> ha.frequency > HAPLOTYPE_CUT_THRESHOLD).sorted((s1, s2) -> -Double.compare(s1.frequency, s2.frequency)).collect(Collectors.toList());
+        if (Start.settings.get("-ch").equals("true")){
+            totalResults = totalResults.stream().filter(ha -> ha.frequency > HAPLOTYPE_CUT_THRESHOLD).sorted((s1, s2) -> -Double.compare(s1.frequency, s2.frequency)).collect(Collectors.toList());
+        }
         log("Haplotypes before return " + totalResults.size());
-        if (totalResults.size() == 0){
+        if (totalResults.size() == 0) {
             totalResults = getDefaultHaplotype();
             Start.errorCode = 5;
             Start.errorMessage = "All haplotypes got too low freqeuncy";
@@ -638,14 +644,19 @@ public class SNVIlluminaMethod extends AbstractSNV {
         Set<Clique> cliquesSet = new HashSet<>();
         cliques.forEach(c -> cliquesSet.add(new Clique(c, consensus())));
         log("Start build clusters");
-        Map<String, List<PairEndRead>> clusters = buildClusters(allPositionsInCliques, allCliquesCharacters);
+//        Map<String, List<PairEndRead>> clusters = buildClusters(allPositionsInCliques, allCliquesCharacters);
+        Map<String, List<Pair<PairEndRead, Integer>>> clustersRelative = buildClustersRelative(allPositionsInCliques, allCliquesCharacters);
         log(" - DONE");
         //skip clusters with less than 10 reads. Do some stuff for transforming output into human-friendly format
-        List<SNVResultContainer> haplotypes = clusters.entrySet().parallelStream().filter(s -> s.getValue().size() > 10).map(s -> {
-            List<PairEndRead> cluster = s.getValue();
-            IlluminaSNVSample snvSample = new IlluminaSNVSample("tmp", new ArrayList<>(cluster), sample.referenceLength);
+//        List<SNVResultContainer> haplotypes = clusters.entrySet().parallelStream().filter(s -> s.getValue().size() > 10).map(s -> {
+        List<SNVResultContainer> haplotypes = clustersRelative.entrySet().parallelStream().filter(s -> s.getValue().size() > 10).map(s -> {
+            //List<PairEndRead> cluster = s.getValue();
+            List<Pair<PairEndRead, Integer>> cluster = s.getValue();
+            List<PairEndRead> reads = cluster.stream().map(Pair::getKey).collect(Collectors.toCollection(ArrayList::new));
+            IlluminaSNVSample snvSample = new IlluminaSNVSample("tmp", reads, sample.referenceLength);
             //if there is no reads, put consensus there
-            double[][] haploProfile = Utils.profile(snvSample, al);
+//            double[][] haploProfile = Utils.profile(snvSample,  al);
+            double[][] haploProfile = Utils.profile(snvSample, cluster.stream().mapToInt(Pair::getValue).toArray(), al);
             for (int i = 0; i < haploProfile[0].length; i++) {
                 double max = 0;
                 for (double[] aProfile : haploProfile) {
@@ -676,7 +687,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                 // some reads may be aligned wrongly or just have minor allele with tiny coverage(1-2 reads) that will give an SNP there
                 // for consensus haplotype we want an additional check since reads  with consensus base can go to another clique and for consensus we will assign only "trash" reads
                 if (str.charAt(i) != consensus.charAt(i) && coverage[i] < MINIMUM_COVERAGE_FOR_HAPLOTYPE_SNP
-                || (str.charAt(i) != consensus.charAt(i) && sourceClique.snps.size() == 0 && count[al.indexOf(str.charAt(i))][i] < MINIMUM_COVERAGE_FOR_CONSENSUS_SNP)
+                        || (str.charAt(i) != consensus.charAt(i) && sourceClique.snps.size() == 0 && count[al.indexOf(str.charAt(i))][i] < MINIMUM_COVERAGE_FOR_CONSENSUS_SNP)
                 ) {
                     log("prevented at pos " + i + " to get " + str.charAt(i) + " with coverage " + coverage[i]);
                     str.setCharAt(i, consensus().charAt(i));
@@ -690,7 +701,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                 }
             }
             Clique haplotypeClique = new Clique(snps, consensus());
-            SNVResultContainer container = new SNVResultContainer(s.getKey(), cluster, haplotypeClique, haplotype);
+            SNVResultContainer container = new SNVResultContainer(s.getKey(), reads, haplotypeClique, haplotype);
             container.sourceClique = sourceClique;
             return container;
         }).collect(Collectors.toList());
@@ -722,6 +733,105 @@ public class SNVIlluminaMethod extends AbstractSNV {
             result.get(i).frequency = frequencies.get(i);
         }
         return result.stream().filter(ha -> ha.frequency > 8e-4).sorted((s1, s2) -> -Double.compare(s1.frequency, s2.frequency)).collect(Collectors.toList());
+    }
+
+    /**
+     * Build read clusters based on cliques. Each read will go to nearest clique in terms of Hamming distance divided by the number of nearest cliques
+     *
+     * @param allPositionsInCliques sorted array or all positions with at least one clique
+     * @param allCliquesCharacters  characters in cliques according to allPositionsInCliques.
+     *                              Has consensus allele if clique doesn't include particular position from allPositionsInCliques
+     * @return Map with clusters, where key is string of clique characters, value is a set of reads
+     */
+    private Map<String, List<Pair<PairEndRead, Integer>>> buildClustersRelative(List<Integer> allPositionsInCliques, List<String> allCliquesCharacters) {
+        Map<String, List<Pair<PairEndRead, Integer>>> clusters = new HashMap<>();
+        allCliquesCharacters.forEach(s -> clusters.put(s, new ArrayList<>()));
+        if (allCliquesCharacters.size() == 1) {
+            for (PairEndRead read : sample.reads) {
+                clusters.get(allCliquesCharacters.get(0)).add(new Pair<>(read, 1));
+            }
+
+            return clusters;
+        }
+        int consensusCliqueIndex = 0;
+        for (int i = 0; i < allCliquesCharacters.size(); i++) {
+            boolean fl = true;
+            String s = allCliquesCharacters.get(i);
+            for (int j = 0; j < s.length(); j++) {
+                if (s.charAt(j) != consensus().charAt(allPositionsInCliques.get(j))) {
+                    fl = false;
+                    break;
+                }
+            }
+            if (fl) {
+                consensusCliqueIndex = i;
+            }
+        }
+        List<Callable<List<Integer>>> tasks = new ArrayList<>();
+        AtomicInteger iter = new AtomicInteger();
+        for (PairEndRead read : sample.reads) {
+            int finalConsensusCliqueIndex = consensusCliqueIndex;
+            tasks.add(() -> {
+                int min = 1_000_000;
+                List<Integer> minI = new ArrayList<>();
+                // for each clique find the distance and overlap with the read
+                for (int i = 0; i < allCliquesCharacters.size(); i++) {
+                    int d = 0;
+                    int coincidences = 0; //overlap in positions
+                    boolean isConsensusClique = i == finalConsensusCliqueIndex;
+                    String c = allCliquesCharacters.get(i);
+                    for (int j = 0; j < allPositionsInCliques.size(); j++) {
+                        if (allPositionsInCliques.get(j) < read.lOffset) {
+                            continue;
+                        }
+                        if (allPositionsInCliques.get(j) > read.lOffset + read.l.length() && allPositionsInCliques.get(j) > read.rOffset + read.r.length()) {
+                            break;
+                        }
+                        char charAtPosition = readCharAtPosition(read, allPositionsInCliques.get(j));
+                        //increase distance
+                        if (charAtPosition != 'N') {
+                            if (charAtPosition != c.charAt(j)) {
+                                d++;
+                            }
+                            //coincidence with current clique
+                            if (c.charAt(j) != consensus().charAt(allPositionsInCliques.get(j))) {
+                                coincidences++;
+                            }
+                            //coincidence with any cluque snp. Only for consensus clique
+                            if (isConsensusClique) {
+                                coincidences++;
+                            }
+                        }
+                    }
+                    if (coincidences != d && d < min && coincidences > 0) {
+                        min = d;
+                        minI = new ArrayList<>();
+                    }
+                    if (d == min && coincidences > 0) {
+                        minI.add(i);
+                    }
+                }
+                if (iter.incrementAndGet() % 100000 == 0) {
+                    logSame("\r" + iter.get());
+                }
+                return minI;
+            });
+
+        }
+        try {
+            List<Future<List<Integer>>> futures = Start.executor.invokeAll(tasks);
+            for (int i = 0; i < sample.reads.size(); i++) {
+                List<Integer> minI = futures.get(i).get();
+                PairEndRead read = sample.reads.get(i);
+                if (!minI.isEmpty()) {
+                    minI.forEach(e -> clusters.get(allCliquesCharacters.get(e)).add(new Pair<>(read, minI.size())));
+                }
+            }
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+        }
+        log("");
+        return clusters;
     }
 
     /**
