@@ -408,12 +408,12 @@ public abstract class AbstractSNV {
         log("Average clique size " + average);
         //average < 2.001 && cliques.size() > 500
         // TODO think about it!
-        if(cliques.size() > 600){
-            log("Too much cliques to process");
-            Start.errorMessage = "Too much cliques to process";
-            Start.errorCode = 1;
-            return new HashSet<>();
-        }
+//        if(cliques.size() > 5000){
+//            log("Too much cliques to process");
+//            Start.errorMessage = "Too much cliques to process";
+//            Start.errorCode = 1;
+//            return new HashSet<>();
+//        }
         // adjacency list for relations between cliques - at least one edge between them and no 'no edges'
         List<Set<Integer>> realCliqueEdges = new ArrayList<>();
         for (int i = 0; i < cliques.size(); i++) {
@@ -463,11 +463,12 @@ public abstract class AbstractSNV {
             double degree = cAdList.stream().mapToInt(Set::size).average().getAsDouble();
             log("Average clique degree " + degree + " start compute cliques");
             // TODO think about it
-            if (degree > 200){
-                Start.errorMessage = "Average clique degree is too high "+ degree;
-                Start.errorCode = 2;
-                return new HashSet<>();
-            }
+            // we have a tl parameter, so maybe it is not neccesary
+//            if (degree > 200){
+//                Start.errorMessage = "Average clique degree is too high "+ degree;
+//                Start.errorCode = 2;
+//                return new HashSet<>();
+//            }
         }
         st = System.currentTimeMillis();
         Set<Set<Integer>> cliqueCliques = AlgorithmUtils.findCliques(cAdList);
@@ -479,11 +480,11 @@ public abstract class AbstractSNV {
         Set<Set<Integer>> mergedCliques = new HashSet<>();
         log("Cliques of cliques size " + cliqueCliques.size());
         // TODO think about it
-        if (cliqueCliques.size() > 500){
-            Start.errorMessage = "Too many cliques of cliques "+cliqueCliques.size();
-            Start.errorCode = 3;
-            return new HashSet<>();
-        }
+//        if (cliqueCliques.size() > 5000){
+//            Start.errorMessage = "Too many cliques of cliques "+cliqueCliques.size();
+//            Start.errorCode = 3;
+//            return new HashSet<>();
+//        }
         boolean fl = cliqueCliques.size() < 100;
         //merge cliques but if they are from different components then merge only for components (if A,B from 1, and C,D from 2. Then it will merge only A with B and C with D)
         for (Set<Integer> setOfCliquesToMerge : cliqueCliques) {
@@ -515,10 +516,10 @@ public abstract class AbstractSNV {
         log("");
         mergedCliques.removeAll(toRemove);
         // TODO think about it
-        if (mergedCliques.size() > 300) {
-            log("Too much merged cliques " + mergedCliques.size());
-            return new HashSet<>();
-        }
+//        if (mergedCliques.size() > 1000) {
+//            log("Too much merged cliques " + mergedCliques.size());
+//            return new HashSet<>();
+//        }
         return mergedCliques;
     }
 
