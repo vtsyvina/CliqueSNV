@@ -17,6 +17,7 @@ public class SNVResultContainer {
     public String clusterString;
     public Clique sourceClique;
     public double frequency;
+    //public double[] EMReadsCoverage;
 
 
     public SNVResultContainer(String clusterString, Map<Integer, String> pacBioCluster, Clique haplotypeClique, String haplotype) {
@@ -66,7 +67,7 @@ public class SNVResultContainer {
                 " snps=" + haploClique +
                 ",\n source clique='" + sourceClique +
                 ",\n frequency= " + frequency +
-                ",\n haplotype='" + haplotype + "\n\'" +
+                ",\n haplotype='" + haplotype + "\n'" +
                 "}";
     }
 }

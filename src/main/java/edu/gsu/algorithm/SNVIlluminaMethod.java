@@ -3,14 +3,15 @@ package edu.gsu.algorithm;
 import edu.gsu.algorithm.em.IlluminaEM;
 import edu.gsu.algorithm.util.AlgorithmUtils;
 import edu.gsu.algorithm.util.CommonReadsIlluminaParallelTask;
+import edu.gsu.algorithm.util.DeletionEdgesParallelTask;
 import edu.gsu.algorithm.util.FindIlluminaEdgesParallelTask;
 import edu.gsu.algorithm.util.TrueFrequencyEstimator;
 import edu.gsu.model.Clique;
 import edu.gsu.model.IlluminaSNVSample;
+import edu.gsu.model.Interval;
 import edu.gsu.model.PairEndRead;
 import edu.gsu.model.SNVResultContainer;
 import edu.gsu.model.SNVStructure;
-import edu.gsu.model.Sample;
 import edu.gsu.start.Start;
 import edu.gsu.util.Utils;
 import edu.gsu.util.builders.SNVStructureBuilder;
@@ -29,23 +30,23 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class SNVIlluminaMethod extends AbstractSNV {
     public static final int minorCount = al.length() - 2;
     public static final int MINIMUM_COVERAGE_FOR_HAPLOTYPE_SNP = 5;
     public static final int MINIMUM_COVERAGE_FOR_CONSENSUS_SNP = 3 * MINIMUM_COVERAGE_FOR_HAPLOTYPE_SNP;
+    public static final int MAX_HAPLOTYPES_BEFORE_EM = 100;
     public int MAX_EDGES_NUMBER;
     private int[][] commonReads;
     private boolean maxEdgesLimitReached = false;
     // we assume them to be sorted
     private List<FindIlluminaEdgesParallelTask.EdgeSummary> noLimitEdges;
 
-    private Sample coronaHaplotypes;
-    private Map<String, Integer> knownHits = new HashMap<>();
+    private final Map<String, Integer> knownHits = new HashMap<>();
 
-    public void setCoronaHaplotypes(Sample coronaHaplotypes) {
-        this.coronaHaplotypes = coronaHaplotypes;
-    }
+    // if the consensus was removed once in one window we don't want to try to add it again and again
+    private boolean consensusWasRemoved = false;
 
     @Override
     protected Technology technology() {
@@ -54,51 +55,35 @@ public class SNVIlluminaMethod extends AbstractSNV {
 
     private final IlluminaSNVSample sample;
     private SNVStructure struct;
-    private double profile[][];
+    private double[][] profile;
     private String consensus;
-
-    /*private class CorrelationContainer {
-        long o11;
-        long o12;
-        long o21;
-        long o22;
-        long reads;
-
-        CorrelationContainer(long o11, long o12, long o21, long o22, long reads) {
-            this.o11 = o11;
-            this.o12 = o12;
-            this.o21 = o21;
-            this.o22 = o22;
-            this.reads = reads;
-        }
-    }*/
 
     //private Map<String, CorrelationContainer> correlationMap;
 
     /**
      * @param sample Given input reads
-     * @param log
+     * @param log    if lof is enables
      */
     public SNVIlluminaMethod(IlluminaSNVSample sample, boolean log) {
-        super(100, Double.parseDouble(Start.settings.getOrDefault("-tf", "0.05")));
         this.log = log;
         this.sample = sample;
-        this.MAX_EDGES_NUMBER = Start.settings.get("-el") == null ? 700 : Integer.parseInt(Start.settings.get("-el"));
+        this.MAX_EDGES_NUMBER = Start.settings.get("-el") == null ? 17000 : Integer.parseInt(Start.settings.get("-el"));
         this.MAX_READ_ERROR = Start.settings.get("-re") == null ? 0.2 : Double.parseDouble(Start.settings.get("-re"));
+        initParameters(100, Double.parseDouble(Start.settings.getOrDefault("-tf", "0.05")));
     }
 
     /**
      * @param sample       Given input reads
      * @param minThreshold threshold for O22 value to consider alleles as SNPs
      * @param minFreq      minimum frequency (relative to reads' coverage) for O22 value to consider alleles as SNP
-     * @param log
+     * @param log          if log is enabled
      */
     public SNVIlluminaMethod(IlluminaSNVSample sample, int minThreshold, double minFreq, boolean log) {
-        super(minThreshold, minFreq);
         this.log = log;
         this.sample = sample;
-        this.MAX_EDGES_NUMBER = Start.settings.get("-el") == null ? 700 : Integer.parseInt(Start.settings.get("-el"));
+        this.MAX_EDGES_NUMBER = Start.settings.get("-el") == null ? 17000 : Integer.parseInt(Start.settings.get("-el"));
         this.MAX_READ_ERROR = Start.settings.get("-re") == null ? 0.2 : Double.parseDouble(Start.settings.get("-re"));
+        initParameters(minThreshold, minFreq);
     }
 
     /**
@@ -109,7 +94,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
      */
     public List<SNVResultContainer> getHaplotypes() {
         long start = System.currentTimeMillis();
-        sample.reads = processOverlaps(sample.reads);
+        processOverlaps(sample.reads);
         sample.reads.sort((r1, r2) -> r1.lOffset == r2.lOffset ? Integer.compare(r1.rOffset, r2.rOffset) : Integer.compare(r1.lOffset, r2.lOffset));
         log("Start 2SNV method");
         logSame("Compute profile");
@@ -118,15 +103,12 @@ public class SNVIlluminaMethod extends AbstractSNV {
         logSame("Compute SNV data structure");
         struct = SNVStructureBuilder.buildIllumina(sample, consensus(), profile());
         log(" - DONE " + (System.currentTimeMillis() - start));
+        readAnswerHaplotypes();
         log("Compute cliques");
         //getMergedCluques first time to get cliques
         List<Set<Integer>> adjacencyList = getUnprocessedSnpsAdjecencyList();
         adjacencyList = rotateFrequentMinors(adjacencyList);
-        if (Start.coronaHaplotypes != null) {
-            log("Not isolated vertices " + adjacencyList.stream().filter(l -> !l.isEmpty()).count());
-            addEdgesFromKnowsHaplotypes(adjacencyList);
-        }
-        Set<Set<Integer>> cliques = getResolvedCliques(adjacencyList);
+        List<Set<Integer>> cliques = getResolvedCliques(adjacencyList);
 
         log("Found cliques: " + cliques.size());
         if (cliques.size() < 50 && !cliques.isEmpty())
@@ -134,32 +116,243 @@ public class SNVIlluminaMethod extends AbstractSNV {
         log(" - DONE " + (System.currentTimeMillis() - start));
         log("Start getting haplotypes");
         // divide by clusters and find haplotypes
+        List<SNVResultContainer> totalResults = getHaplotypesFromCliques(start, cliques);
+        log("Haplotypes before return " + totalResults.size());
+        if (totalResults.size() == 0) {
+            totalResults = getDefaultHaplotype();
+            Start.errorCode = 5;
+            Start.errorMessage = "All haplotypes got too low freqeuncy";
+        }
+        outputAnswerChecking(totalResults);
+        //just for debug
+
+        return totalResults;
+    }
+
+    /**
+     * Unlike in previous version we will reconstruct haplotypes within windows of fragment length size
+     * 1) We start finding haplotypes in a window SP, SE,
+     * 2) add all edges in found haplotypes to form a clique
+     * 3) extend window to include more edges until we cover the whole sample
+     *
+     * @return reconstructed haplotypes
+     */
+    public List<SNVResultContainer> getHaplotypesV2() {
+        long start = System.currentTimeMillis();
+        processOverlaps(sample.reads);
+        sample.reads.sort((r1, r2) -> r1.lOffset == r2.lOffset ? Integer.compare(r1.rOffset, r2.rOffset) : Integer.compare(r1.lOffset, r2.lOffset));
+
+        log("Start 2SNV method");
+        logSame("Compute profile");
+        profile();
+        log(" - DONE " + (System.currentTimeMillis() - start));
+        logSame("Compute SNV data structure");
+        struct = SNVStructureBuilder.buildIllumina(sample, consensus(), profile());
+        log(" - DONE " + (System.currentTimeMillis() - start));
+        int mostCoveredPosition = mostCoveredPosition();
+        log("Most covered position is " + mostCoveredPosition + " with coverage " + struct.readsAtPosition[mostCoveredPosition].length);
+
+        log("Compute cliques");
+        sampleFragmentLength = calculateFragmentLength();
+        log("Fragment length is " + sampleFragmentLength);
+        int workingWindowSize = sampleFragmentLength;
+        MAX_EDGES_NUMBER = 1_000_000; // we want to capture all the edges
+        List<Set<Integer>> fullAdjacencyList = getUnprocessedSnpsAdjecencyList();
+        fullAdjacencyList = rotateFrequentMinors(fullAdjacencyList);
+        readAnswerHaplotypes();
+
+        if (answer != null) {
+            log("FN edges");
+            Set<String> FNedges = new HashSet<>();
+            for (Clique clique : answer) {
+                for (Integer i : clique.splittedSnps) {
+                    for (Integer j : clique.splittedSnps) {
+                        if (i >= j || (j - i) / minorCount > sampleFragmentLength) {
+                            continue;
+                        }
+                        if (al.charAt(getAllele(i)) == '-' && al.charAt(getAllele(j)) == '-') {
+                            continue;
+                        }
+                        if (!FNedges.contains(i + "_" + j) && !fullAdjacencyList.get(i).contains(j)) {
+                            FNedges.add(i + "_" + j);
+                            log(i / minorCount + " " + j / minorCount + " " + al.charAt(getAllele(i)) + " " + al.charAt(getAllele(j)) + Arrays.toString(getOs(i, j)) + " " + getP(i, j));
+                        }
+                        if (Start.settings.containsKey("-addFnedges")) {
+                            fullAdjacencyList.get(i).add(j);
+                            fullAdjacencyList.get(j).add(i);
+                        }
+                    }
+                }
+            }
+            log("Total FN edges " + FNedges.size());
+        }
+
+        List<SNVResultContainer> totalResults = new ArrayList<>();
+        //mostCoveredPosition = 0;
+        int processedWindowStart = mostCoveredPosition; // we start from the same position and will extend either to the left or to the right
+        int processedWindowEnd = mostCoveredPosition;
+        // extend the processed window gradually
+        while (processedWindowStart > START_POSITION || processedWindowEnd < END_POSITION) {
+            int leftCoverage = processedWindowStart - workingWindowSize < 0 ? 0 : struct.readsAtPosition[processedWindowStart - workingWindowSize].length;
+            int rightCoverage = processedWindowEnd + workingWindowSize > sample.referenceLength ? 0 : struct.readsAtPosition[processedWindowEnd + workingWindowSize].length;
+            boolean extendLeft = extendLeft(leftCoverage, rightCoverage, processedWindowStart, processedWindowEnd);
+            if (extendLeft) { // extend to where we see higher coverage
+                processedWindowStart -= workingWindowSize;
+                processedWindowStart = Math.max(START_POSITION, processedWindowStart);
+                int additionalLength = 0;
+                if (processedWindowStart - START_POSITION < 20) { // no need to do tiny windows for last positions
+                    additionalLength = processedWindowStart - START_POSITION;
+                    processedWindowStart = START_POSITION;
+                }
+                workingWindowStart = processedWindowStart; // extend to the left
+                workingWindowEnd = processedWindowStart + workingWindowSize + additionalLength;
+                workingWindowEnd = Math.min(END_POSITION, workingWindowEnd);
+                if (workingWindowEnd > processedWindowEnd) { // for the wirst iteration PWE = PWS so we need to extend both start and end
+                    processedWindowEnd = workingWindowEnd;
+                }
+            } else {
+                processedWindowEnd += workingWindowSize;
+                processedWindowEnd = Math.min(END_POSITION, processedWindowEnd);
+                int additionalLength = 0;
+                if (END_POSITION - processedWindowEnd < 20) {
+                    additionalLength = END_POSITION - processedWindowEnd;
+                    processedWindowEnd = END_POSITION;
+                }
+                workingWindowEnd = processedWindowEnd;
+                workingWindowStart = processedWindowEnd - workingWindowSize - additionalLength;
+                workingWindowStart = Math.max(START_POSITION, workingWindowStart);
+                if (workingWindowStart < processedWindowStart) {
+                    processedWindowStart = workingWindowStart;
+                }
+            }
+            log("Processing window [" + processedWindowStart + ", " + processedWindowEnd + "] window [" + workingWindowStart + ", " + workingWindowEnd + "] " + (extendLeft ? " extend left" : " extend right"));
+            int splitWWStart = workingWindowStart * minorCount;
+            int splitWWEnd = workingWindowEnd * minorCount;
+            int splitPWStart = processedWindowStart * minorCount;
+            int splitPWEnd = processedWindowEnd * minorCount;
+            // create a new adjacency list for each window
+            List<Set<Integer>> adjacencyList = new ArrayList<>();
+            for (int i = 0; i < fullAdjacencyList.size(); i++) {
+                adjacencyList.add(new HashSet<>());
+                List<SNVResultContainer> fResults = totalResults;
+                int fI = i;
+                // add edges only in the range
+                adjacencyList.get(i).addAll(fullAdjacencyList.get(i).stream().filter(
+                        j -> (insideInterval(j, splitWWStart, splitWWEnd) && insideInterval(fI, splitWWStart, splitWWEnd)) // both inside interval
+                                || edgeInHaplotype(fI, j, fResults)  //&& insideInterval(j, splitPWStart, splitPWEnd)// both in haplotype
+                                || insideHaplotype(fI, fResults) && insideInterval(j, splitWWStart, splitWWEnd) // i in haplotype, j in window
+                                || insideHaplotype(j, fResults) && insideInterval(fI, splitWWStart, splitWWEnd)) // j in haploty, i in window
+                        .collect(Collectors.toList()));
+            }
+            List<Set<Integer>> cliques = getResolvedCliques(adjacencyList);
+            log("Found resolved cliques: " + cliques.size());
+            if (cliques.size() < 100 && !cliques.isEmpty())
+                log(cliques.stream().map(s -> new Clique(s, consensus()).toString()).reduce((t, s) -> t + "\n" + s).get());
+            if (Start.answer != null) log("Merged cliques missmatches");
+            checkMissmatchesWithAnswer(cliques);
+            log(" - DONE " + (System.currentTimeMillis() - start));
+            log("Start getting haplotypes");
+
+            totalResults = getHaplotypesFromCliques(start, cliques, splitWWStart, splitWWEnd, splitPWStart, splitPWEnd);
+            // add all edges from found haplotypes inside the graph to form a clique in next iteration
+            for (SNVResultContainer container : totalResults) {
+                for (Integer i : container.sourceClique.splittedSnps) {
+
+                    for (Integer j : container.sourceClique.splittedSnps) {
+                        if (i.equals(j)) {
+                            continue;
+                        }
+                        fullAdjacencyList.get(i).add(j);
+                        fullAdjacencyList.get(j).add(i);
+                    }
+                }
+            }
+            outputAnswerChecking(totalResults, processedWindowStart, processedWindowEnd);
+            log("Processed window [" + processedWindowStart + ", " + processedWindowEnd + "] window [" + workingWindowStart + ", " + workingWindowEnd + "] " + (extendLeft ? " extend left" : " extend right"));
+            log("Haplo cliques ("+totalResults.stream()+")");
+            totalResults.forEach(t -> log(t.haploClique.toString()));
+            log("");
+        }
+        //totalResults = filterHaplotypeFrequencies(totalResults, HAPLOTYPE_CUT_THRESHOLD);
+        outputAnswerChecking(totalResults, processedWindowStart, processedWindowEnd);
+        return totalResults;
+    }
+
+    /**
+     * Checks if the window should be extended left or right
+     * @param leftCoverage coverage on the left position candidate to extend
+     * @param rightCoverage coverage on the right position candidate to extend
+     * @param processedWindowStart already processed start position
+     * @param processedWindowEnd already processed end position
+     * @return true if we should extend left, false otherwise
+     */
+    private boolean extendLeft(int leftCoverage, int rightCoverage, int processedWindowStart, int processedWindowEnd) {
+        return leftCoverage > rightCoverage || processedWindowEnd >= END_POSITION; // if we reached the end we go to the left
+    }
+
+    private boolean insideInterval(int position, int left, int right) {
+        return position >= left && position <= right;
+    }
+
+    /**
+     * Checks if split position belongs to any haplotye
+     * @param position split position
+     * @param haplotypes a list of haplotypes
+     * @return true if the position is present in at least on of the haplotypes
+     */
+    private boolean insideHaplotype(int position, List<SNVResultContainer> haplotypes) {
+        for (SNVResultContainer haplotype : haplotypes) {
+            if (haplotype.sourceClique.splittedSnps.contains(position)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * Tells if the edge exists in the given list of haplotypes. Since we work with windows we want to keep remote edges from existing haplotypes
+     *
+     * @param i          split position
+     * @param j          split position
+     * @param haplotypes list of previously found haplotypes
+     * @return true if (i,j) belongs to any haplotype
+     */
+    private boolean edgeInHaplotype(int i, int j, List<SNVResultContainer> haplotypes) {
+        for (SNVResultContainer haplotype : haplotypes) {
+            if (haplotype.sourceClique.splittedSnps.contains(i) && haplotype.sourceClique.splittedSnps.contains(j)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<SNVResultContainer> getHaplotypesFromCliques(long start, List<Set<Integer>> cliques) {
+        return getHaplotypesFromCliques(start, cliques, 0, sample.referenceLength * minorCount, 0, sample.referenceLength * minorCount);
+    }
+
+
+    private List<SNVResultContainer> getHaplotypesFromCliques(long start, List<Set<Integer>> cliques, int splitWorkingWindowStart, int splitWorkingWindowEnd, int splitProcessingWindowStart, int splitProcessingWindowEnd) {
+        List<Set<Integer>> adjacencyList;// divide by clusters and find haplotypes
         List<SNVResultContainer> snvResultContainers = processCliques(cliques);
         log(" - DONE getting haplotypes " + (System.currentTimeMillis() - start));
 
 
         // calculate haplotypes for different edge frequency limits
         // so that we will make sure that higher frequency haplotypes won't be contaminated with the noise
-        double[] edgesLimit = {0.1, 0.05, 0.01};
-        if (Start.settings.get("-fc").equals("false")){
+        double[] edgesLimit =  new double[0];//{0.1, 0.05, 0.01}; for now we don't want to have thise correction in any case
+        if (Start.settings.get("-fc").equals("false")) {
             edgesLimit = new double[0];
         }
         List<SNVResultContainer> totalResults = new ArrayList<>();
         log("Haplotypes before " + snvResultContainers.size());
-        readAnswerHaplotypes();
-        outputAnswerChecking(snvResultContainers);
+        //outputAnswerChecking(snvResultContainers);
         // start with adding high frequency haplotypes
-        for (int i = 0; i < edgesLimit.length; i++) {
-//            log = false;
-            adjacencyList = getTopNEdgesAdjacencyList(edgesLimit[i]);
-            if (Start.coronaHaplotypes != null) {
-                log("Not isolated vertices " + adjacencyList.stream().filter(l -> !l.isEmpty()).count());
-                addEdgesFromKnowsHaplotypes(adjacencyList);
-            }
+        for (double v : edgesLimit) {
+            adjacencyList = getTopNEdgesAdjacencyList(v, splitWorkingWindowStart, splitWorkingWindowEnd);
             cliques = getResolvedCliques(adjacencyList);
-            log = true;
             List<SNVResultContainer> haplotypes = processCliques(cliques);
-
+            log("Haplo cliques:");
             for (SNVResultContainer haplotype : haplotypes) {
                 log(haplotype.haploClique.toString());
                 boolean added = false;
@@ -177,8 +370,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                 }
             }
             log("Found haplotypes " + haplotypes.size());
-            log("Haplotypes after " + edgesLimit[i] + " " + totalResults.size());
-            outputAnswerChecking(totalResults);
+            log("Haplotypes after " + v + " " + totalResults.size());
         }
         // add haplotypes obtained with all allowed edges
         for (SNVResultContainer haplotype : snvResultContainers) {
@@ -195,29 +387,46 @@ public class SNVIlluminaMethod extends AbstractSNV {
             }
         }
         log("Haplotypes after no freq limit " + totalResults.size());
-        outputAnswerChecking(totalResults);
+        int startPosition = splitProcessingWindowStart / minorCount;
+        int endPosition = splitProcessingWindowEnd / minorCount;
+        outputAnswerChecking(totalResults, startPosition, endPosition);
         log("");
         double[] freq = new double[totalResults.size()];
         for (int i = 0; i < freq.length; i++) {
             freq[i] = totalResults.get(i).frequency;
         }
-        freq = Utils.normalize(freq);
-        for (int i = 0; i < freq.length; i++) {
-            totalResults.get(i).frequency = freq[i];
-        }
         log("Freq before filtering" + Arrays.toString(freq));
-        if (Start.settings.get("-ch").equals("true")){
-            totalResults = totalResults.stream().filter(ha -> ha.frequency > HAPLOTYPE_CUT_THRESHOLD).sorted((s1, s2) -> -Double.compare(s1.frequency, s2.frequency)).collect(Collectors.toList());
-        }
-        log("Haplotypes before return " + totalResults.size());
-        if (totalResults.size() == 0) {
-            totalResults = getDefaultHaplotype();
-            Start.errorCode = 5;
-            Start.errorMessage = "All haplotypes got too low freqeuncy";
-        }
-        outputAnswerChecking(totalResults);
-        //just for debug
 
+        log("Freq before second filtering" + Arrays.toString(freq));
+        if (Start.settings.get("-ch").equals("true")) {
+            totalResults = filterHaplotypeFrequencies(totalResults, HAPLOTYPE_CUT_THRESHOLD / 2);
+        }
+        List<SNVResultContainer> filteredRecombinations = new ArrayList<>();
+        Set<Set<Integer>> existingHaplotypes = new HashSet<>();
+        //proccessing window start and end
+        int PWS;
+        int PWE;
+        if (splitWorkingWindowStart == splitProcessingWindowStart) { // we extended window left
+            PWS = splitWorkingWindowEnd; // from working end
+            PWE = splitProcessingWindowEnd; // to processing end
+        } else {
+            PWS = splitProcessingWindowStart; // from processing start
+            PWE = splitWorkingWindowStart; // to working start
+        }
+        if (PWS != PWE && Start.settings.containsKey("-filter")) { // not the first ineration
+            for (SNVResultContainer container : totalResults) {
+                Set<Integer> processedClique = container.sourceClique.splittedSnps.stream().filter(i -> i >= PWS && i <= PWE).collect(Collectors.toSet());
+                if (!existingHaplotypes.contains(processedClique)) {
+                    existingHaplotypes.add(processedClique);
+                    filteredRecombinations.add(container);
+                    log(" Haplotype " + " with freq " + container.frequency + " passed " + container.sourceClique);
+                } else {
+                    log(" Haplotype " + " with freq " + container.frequency + " was filtered out" + container.sourceClique);
+                }
+
+            }
+            totalResults = filteredRecombinations;
+        }
         return totalResults;
     }
 
@@ -228,7 +437,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
      */
     public Clique getVC() {
         long start = System.currentTimeMillis();
-        sample.reads = processOverlaps(sample.reads);
+        processOverlaps(sample.reads);
         sample.reads.sort((r1, r2) -> r1.lOffset == r2.lOffset ? Integer.compare(r1.rOffset, r2.rOffset) : Integer.compare(r1.lOffset, r2.lOffset));
         log("Start 2SNV method");
         logSame("Compute profile");
@@ -240,7 +449,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
         adjacencyList = rotateFrequentMinors(adjacencyList);
         log(" - DONE");
         //get haplotypes based on pure cliques, i.e. not merged.
-        Set<Set<Integer>> cliques = AlgorithmUtils.findCliques(adjacencyList).stream().filter(c -> c.size() > 1).collect(Collectors.toSet());
+        List<Set<Integer>> cliques = AlgorithmUtils.findCliques(adjacencyList).stream().filter(c -> c.size() > 1).collect(Collectors.toList());
         List<SNVResultContainer> snvResultContainers = processCliques(cliques);
         //IntStream.range(0, adjacencyList.size()).filter(i -> adjacencyList.get(i).size() > 0).boxed().collect(Collectors.toSet())
         return getVCCliqie(snvResultContainers.stream().map(c -> c.haploClique).flatMap(cl -> cl.splittedSnps.stream()).collect(Collectors.toSet()),
@@ -267,8 +476,22 @@ public class SNVIlluminaMethod extends AbstractSNV {
         if (p < 1E-12) {
             return 0;
         } else {
-            return USE_LOG_PVALUE ? Utils.binomialLogPvalue((int) os[3], p, (int) reads) : Utils.binomialPvalue((int) os[3], p, (int) reads);
+            return Utils.binomialOneMinusPvalue((int) os[3], p, (int) reads);
         }
+    }
+
+    @Override
+    public double getNonEndgeP(int i, int j) {
+        long[] os = getOs(i, j);
+        if (os[0] == 0) {
+            long tmp = os[0];
+            os[0] = os[3];
+            os[3] = tmp;
+        }
+        long reads = commonReads[i / minorCount][j / minorCount];
+        double p = NON_EDGE_T_FREQ; //TODO change
+        return Utils.binomialPvalue((int) os[3], p, (int) reads);
+
     }
 
     @Override
@@ -299,10 +522,10 @@ public class SNVIlluminaMethod extends AbstractSNV {
     /**
      * In case when we just what to know snps, onlySnps argument should be true - useful in case we want just to clean reads and need snp positions
      */
-    private Set<Set<Integer>> getResolvedCliques(List<Set<Integer>> adjacencyList) {
-        log("Edges in total: " + adjacencyList.stream().mapToInt(Set::size).sum());
+    private List<Set<Integer>> getResolvedCliques(List<Set<Integer>> adjacencyList) {
+        log("Edges in total: " + adjacencyList.stream().mapToInt(Set::size).sum() / 2);
         log("Not isolated vertices " + adjacencyList.stream().filter(l -> !l.isEmpty()).count());
-        Set<Set<Integer>> mergedCliques = getMergedCliques(adjacencyList);
+        List<Set<Integer>> mergedCliques = getMergedCliques(adjacencyList);
         int conflictsResolved = 0;
         //resolve conflicts in cliques, leave only snps on the same position with higher frequency
         for (Set<Integer> clique : mergedCliques) {
@@ -333,10 +556,10 @@ public class SNVIlluminaMethod extends AbstractSNV {
     /**
      * In some cases we may need to change minor with major since they have close frequencies
      * Methods finds all minors with frequency > 45% swap with majors and check how many edges we will have
-     * for both variants. Variant with most edges is kept. COnsensus is updated accordingly
+     * for both variants. Variant with most edges is kept. Consensus is updated accordingly
      *
-     * @param adjacencyList
-     * @return
+     * @param adjacencyList adjacency list to rotate
+     * @return new adjacency list with rotated minors
      */
     private List<Set<Integer>> rotateFrequentMinors(List<Set<Integer>> adjacencyList) {
         if (maxEdgesLimitReached) {
@@ -369,15 +592,15 @@ public class SNVIlluminaMethod extends AbstractSNV {
                     break;
                 }
             }
-            if (newChar == 'N') {
+            if (newChar == 'N' || newChar == '-') {
                 continue;
             }
             positions.add(i);
-            oldSplitted.add(splittedPosition(i, newChar)); // newChar is a minor before swap and oldChar will be minor after swap
+            oldSplitted.add(splitPosition(i, newChar)); // newChar is a minor before swap and oldChar will be minor after swap
             char oldChar = consensus.charAt(i);
             oldChars.add(oldChar);
             log("Exchange " + oldChar + " to " + newChar + " at " + i + " position");
-            newSplitted.add(splittedPosition(i, oldChar));
+            newSplitted.add(splitPosition(i, oldChar));
         }
         if (positions.size() == 0) {
             log("No rotation needed");
@@ -428,9 +651,57 @@ public class SNVIlluminaMethod extends AbstractSNV {
         }
         log("Total edges before filtering " + allEdges.size());
         List<Set<Integer>> adjacencyList = convertEdgesIntoAdjacencyList(allEdges);
+        addDeletionEdges(adjacencyList);
         noLimitEdges = allEdges;
         removeEdgesForSecondMinors(adjacencyList, struct);
         return adjacencyList;
+    }
+
+    /**
+     * Some haplotypes have long deletions (a factor of 3). Since we have a restriction on the minimum distance between SNPs it might be a problem
+     * So we preemptively add all edges to create a clique between deletions that are supported by enough reads
+     *
+     * @param adjacencyList adjacency list
+     */
+    private void addDeletionEdges(List<Set<Integer>> adjacencyList) {
+        log("Start adding deletion edges");
+        Map<Interval, Integer> deletionMap = new HashMap<>();
+        List<Callable<Map<Interval, Integer>>> tasks = new ArrayList<>();
+        int threads = Start.threadsNumber();
+        for (int i = 0; i < threads; i++) {
+            tasks.add(new DeletionEdgesParallelTask(i, threads, sample, MIN_O22_THRESHOLD));
+        }
+        try {
+            List<Future<Map<Interval, Integer>>> futures = Start.executor.invokeAll(tasks);
+            for (Future<Map<Interval, Integer>> future : futures) {
+                Map<Interval, Integer> pairIntegerMap = future.get();
+                pairIntegerMap.forEach((k, v) -> {
+                    Integer count = deletionMap.getOrDefault(k, 0);
+                    deletionMap.put(k, count + v);
+                });
+            }
+        } catch (InterruptedException | ExecutionException e) {
+            System.out.println("Finding deletion edges cased an exception");
+            e.printStackTrace();
+        }
+        AtomicInteger totalDeletionRegions = new AtomicInteger();
+        //deletionMap.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach();
+        deletionMap.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach((entry) -> {
+            Integer nReads = entry.getValue();
+            Interval region = entry.getKey();
+            if (nReads >= MIN_O22_THRESHOLD) {
+                totalDeletionRegions.getAndIncrement();
+                log("Deletion region " + region + " supported by " + nReads + " reads, length " + (region.e - region.s + 1));
+                for (int i = region.s; i < region.e; i++) {
+                    for (int j = i + 1; j < region.e; j++) {
+                        int l = splitPosition(i, '-');
+                        int r = splitPosition(j, '-');
+                        adjacencyList.get(l).add(r);
+                        adjacencyList.get(r).add(l);
+                    }
+                }
+            }
+        });
     }
 
     /**
@@ -438,6 +709,14 @@ public class SNVIlluminaMethod extends AbstractSNV {
      */
     private List<Set<Integer>> getTopNEdgesAdjacencyList(double freq) {
         return convertEdgesIntoAdjacencyList(noLimitEdges.stream().filter(e -> e.relFreq > freq).collect(Collectors.toList()));
+    }
+
+    /**
+     * Returns the adjacency list composed of n the most frequent edges
+     */
+    private List<Set<Integer>> getTopNEdgesAdjacencyList(double freq, int splitWorkingWindowStart, int splitWorkingWindowEnd) {
+        return convertEdgesIntoAdjacencyList(noLimitEdges.stream().filter(e -> e.relFreq > freq && e.i >= splitWorkingWindowStart && e.i <= splitWorkingWindowEnd
+                && e.j >= splitWorkingWindowStart && e.j <= splitWorkingWindowEnd).collect(Collectors.toList()));
     }
 
     /**
@@ -450,18 +729,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
         for (int i = 0; i < sample.referenceLength * minorCount; i++) {
             adjacencyList.add(new HashSet<>());
         }
-        log("Top edges");
         allEdges.sort((e1, e2) -> -Double.compare(e1.relFreq, e2.relFreq));
-        if (allEdges.size() > 10) {
-            int edges = Math.min(allEdges.size(), MAX_EDGES_NUMBER);
-            for (int i = 0; i < edges; i++) {
-                log(allEdges.get(i).toString());
-            }
-            log("Bottom edges");
-            for (int i = 0; i < 10; i++) {
-                log(allEdges.get(allEdges.size() - 10 + i).toString());
-            }
-        }
 
         int maxEdges = Math.min(allEdges.size(), MAX_EDGES_NUMBER);
         maxEdgesLimitReached = maxEdges == MAX_EDGES_NUMBER;
@@ -473,22 +741,10 @@ public class SNVIlluminaMethod extends AbstractSNV {
         return adjacencyList;
     }
 
-    public void processZeroO(Set<Integer> adjacencyNode, int i, int l, int first, int[] hits, int j, int second, long reads, char m1, char m2, long o22, long o21, long o12, long o11) {
-        if (o22 / (MAX_READ_ERROR * o11 + (1 - MAX_READ_ERROR) * (o12 + o21)) < MAX_READ_ERROR) {
-            return;
-        }
-        log(String.format("%d %d %c %c mi1=%d ma1=%d mi2=%d ma2=%d hits=%d p012=%.3e reads=%d %d %d %d %d",
-                first, second, m1, m2, l, struct.rowMinors[j].length, hits[j], 0.0, reads, o11, o12, o21, o22));
-        //correlationMap.put(getCorrelationKey(first, second, m1, m2), new CorrelationContainer(o11, o12, o21, o22, reads));
-        adjacencyNode.add(j);
-    }
-
     private void computeCommonReads() {
         if (commonReads == null) {
             commonReads = new int[sample.referenceLength][sample.referenceLength];
             log("Common reads matrix calculation");
-
-            int cores = Start.threadsNumber();
             List<Callable<Boolean>> tasks = new ArrayList<>();
 
             for (int i = 0; i < sample.referenceLength; i++) {
@@ -515,8 +771,8 @@ public class SNVIlluminaMethod extends AbstractSNV {
     @Override
     public String consensus() {
         if (consensus == null) {
-            consensus = Utils.consensus(profile(), al);
-            log(" Reference length = " + consensus.length());
+            consensus = Utils.consensus(profile(), al, false);// we don't want to have deletions in consensus since it causes problems when some haplotypes have deletions
+            log(" Reference length = " + consensus.length());// we want deletion to always be a minor
         }
         return consensus;
     }
@@ -532,6 +788,9 @@ public class SNVIlluminaMethod extends AbstractSNV {
     public long getO11(int i, int j, int first, int second, long o22, long o21, long o12, long reads) {
         long o11 = reads - o12 - o21 - o22; //all 11(and some false positive 11),12
         //1 1'
+        if (struct.readsAtPosition[second].length == 0 || struct.readsAtPosition[first].length == 0) {
+            return 0;
+        }
         for (int k = 0; k < minorCount; k++) {
             if (k == j % minorCount) {
                 continue;
@@ -590,7 +849,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
     /**
      * If left and right reads overlap - merge them into just left read
      */
-    private List<PairEndRead> processOverlaps(List<PairEndRead> reads) {
+    private void processOverlaps(List<PairEndRead> reads) {
         for (PairEndRead read : reads) {
             if (read.lOffset + read.l.length() > read.rOffset && read.rOffset != -1) {
                 StringBuilder newL = new StringBuilder(read.l);
@@ -603,7 +862,6 @@ public class SNVIlluminaMethod extends AbstractSNV {
                 read.rOffset = -1;
             }
         }
-        return reads;
     }
 
     private boolean readHasPosition(PairEndRead read, int position) {
@@ -635,25 +893,44 @@ public class SNVIlluminaMethod extends AbstractSNV {
      * @param cliques Set of cliques in form of splitted SNPs(where position and minor are encoded in a single number)
      * @return Set of containers with results. Each container contains haplotype itself and some additional helpful information
      */
-    private List<SNVResultContainer> processCliques(Set<Set<Integer>> cliques) {
+    private List<SNVResultContainer> processCliques(List<Set<Integer>> cliques) {
         //add consensus clique
-        cliques.add(new HashSet<>());
+        if (!consensusWasRemoved) {
+            cliques.add(new HashSet<>());
+        }
         List<Integer> allPositionsInCliques = cliques.stream().flatMap(s -> s.stream().map(c -> c / minorCount)).distinct().sorted().collect(Collectors.toList());
-        List<String> allCliquesCharacters = getAllCliquesCharacters(struct, cliques, allPositionsInCliques);
+        List<String> allCliquesCharacters = getAllCliquesCharacters(cliques, allPositionsInCliques);
 
         Set<Clique> cliquesSet = new HashSet<>();
         cliques.forEach(c -> cliquesSet.add(new Clique(c, consensus())));
         log("Start build clusters");
-//        Map<String, List<PairEndRead>> clusters = buildClusters(allPositionsInCliques, allCliquesCharacters);
         Map<String, List<Pair<PairEndRead, Integer>>> clustersRelative = buildClustersRelative(allPositionsInCliques, allCliquesCharacters);
         log(" - DONE");
+        /*
+            simple estimation of haplotypes frequencies through the number of assigned reads. We don't want too much hapltoypes since it doesn't make much sense
+            take only top MAX_HAPLOTYPES_BEFORE_EM
+         */
+        if (clustersRelative.size() > MAX_HAPLOTYPES_BEFORE_EM) {
+            List<Pair<Double, Map.Entry<String, List<Pair<PairEndRead, Integer>>>>> freqList = new ArrayList<>();
+            for (Map.Entry<String, List<Pair<PairEndRead, Integer>>> entry : clustersRelative.entrySet()) {
+                double freq = 0;
+                for (Pair<PairEndRead, Integer> p : entry.getValue()) {
+                    freq += 1. / p.getValue();
+                }
+                freqList.add(new Pair<>(freq, entry));
+            }
+            // sort descending
+            freqList.sort((l, r) -> r.getKey().compareTo(l.getKey()));
+            clustersRelative = new HashMap<>();
+            for (int i = 0; i < MAX_HAPLOTYPES_BEFORE_EM; i++) {
+                clustersRelative.put(freqList.get(i).getValue().getKey(), freqList.get(i).getValue().getValue());
+            }
+        }
         //skip clusters with less than 10 reads. Do some stuff for transforming output into human-friendly format
-//        List<SNVResultContainer> haplotypes = clusters.entrySet().parallelStream().filter(s -> s.getValue().size() > 10).map(s -> {
         List<SNVResultContainer> haplotypes = clustersRelative.entrySet().parallelStream().filter(s -> s.getValue().size() > 10).map(s -> {
-            //List<PairEndRead> cluster = s.getValue();
             List<Pair<PairEndRead, Integer>> cluster = s.getValue();
             List<PairEndRead> reads = cluster.stream().map(Pair::getKey).collect(Collectors.toCollection(ArrayList::new));
-            IlluminaSNVSample snvSample = new IlluminaSNVSample("tmp", reads, sample.referenceLength);
+            IlluminaSNVSample snvSample = new IlluminaSNVSample("tmp", reads, sample.referenceLength, sample.singleRead);
             //if there is no reads, put consensus there
 //            double[][] haploProfile = Utils.profile(snvSample,  al);
             double[][] haploProfile = Utils.profile(snvSample, cluster.stream().mapToInt(Pair::getValue).toArray(), al);
@@ -665,7 +942,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                     }
                 }
                 if (!(max > 0.01)) {
-                    int i1 = al.indexOf(consensus().charAt(i)) == -1 ? '-' : al.indexOf(consensus().charAt(i));
+                    int i1 = al.indexOf(consensus().charAt(i)) == -1 ? 'N' : al.indexOf(consensus().charAt(i));
                     haploProfile[i1][i] = 1;
                 }
             }
@@ -689,7 +966,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                 if (str.charAt(i) != consensus.charAt(i) && coverage[i] < MINIMUM_COVERAGE_FOR_HAPLOTYPE_SNP
                         || (str.charAt(i) != consensus.charAt(i) && sourceClique.snps.size() == 0 && count[al.indexOf(str.charAt(i))][i] < MINIMUM_COVERAGE_FOR_CONSENSUS_SNP)
                 ) {
-                    log("prevented at pos " + i + " to get " + str.charAt(i) + " with coverage " + coverage[i]);
+                    //log("prevented at pos " + i + " to get " + str.charAt(i) + " with coverage " + coverage[i]);
                     str.setCharAt(i, consensus().charAt(i));
                 }
             }
@@ -697,7 +974,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
             Set<Integer> snps = new HashSet<>();
             for (int i = 0; i < haplotype.length(); i++) {
                 if (haplotype.charAt(i) != consensus().charAt(i)) {
-                    snps.add(splittedPosition(i, haplotype.charAt(i)));
+                    snps.add(splitPosition(i, haplotype.charAt(i)));
                 }
             }
             Clique haplotypeClique = new Clique(snps, consensus());
@@ -716,15 +993,17 @@ public class SNVIlluminaMethod extends AbstractSNV {
         List<SNVResultContainer> result = new ArrayList<>(merge.values());
         List<String> h = result.stream().map(s -> s.haplotype).collect(Collectors.toList());
         log("Start EM ");
-        List<Double> frequencies = new IlluminaEM().frequencies(h, sample);
+        IlluminaEM illuminaEM = new IlluminaEM();
+        List<Double> frequencies = illuminaEM.frequencies(h, sample);
         // there is no evidence that consensus haplotype exists if it's frequency is less than 25%
         // remove it and recalculate frequencies
         for (int i = 0; i < result.size(); i++) {
-            if (result.get(i).haploClique.splittedSnps.isEmpty() && frequencies.get(i) < 0.25) {
+            if ((result.get(i).sourceClique.splittedSnps.isEmpty() || result.get(i).haploClique.splittedSnps.isEmpty()) && frequencies.get(i) < 0.25) {
                 result.remove(i);
                 h.remove(i);
                 log("Consensus haplotype was removed");
                 frequencies = new IlluminaEM().frequencies(h, sample);
+                consensusWasRemoved = true;
                 break;
             }
         }
@@ -834,103 +1113,6 @@ public class SNVIlluminaMethod extends AbstractSNV {
         return clusters;
     }
 
-    /**
-     * Build read clusters based on cliques. Each read will go to nearest clique in terms of Hamming distance
-     *
-     * @param allPositionsInCliques sorted array or all positions with at least one clique
-     * @param allCliquesCharacters  characters in cliques according to allPositionsInCliques.
-     *                              Has consensus allele if clique doesn't include particular position from allPositionsInCliques
-     * @return Map with clusters, where key is string of clique characters, value is a set of reads
-     */
-    private Map<String, List<PairEndRead>> buildClusters
-    (List<Integer> allPositionsInCliques, List<String> allCliquesCharacters) {
-        Map<String, List<PairEndRead>> clusters = new HashMap<>();
-        allCliquesCharacters.forEach(s -> clusters.put(s, new ArrayList<>()));
-        if (allCliquesCharacters.size() == 1) {
-            clusters.get(allCliquesCharacters.get(0)).addAll(sample.reads);
-            return clusters;
-        }
-        int consensusCliqueIndex = 0;
-        for (int i = 0; i < allCliquesCharacters.size(); i++) {
-            boolean fl = true;
-            String s = allCliquesCharacters.get(i);
-            for (int j = 0; j < s.length(); j++) {
-                if (s.charAt(j) != consensus().charAt(allPositionsInCliques.get(j))) {
-                    fl = false;
-                    break;
-                }
-            }
-            if (fl) {
-                consensusCliqueIndex = i;
-            }
-        }
-        List<Callable<List<Integer>>> tasks = new ArrayList<>();
-        AtomicInteger iter = new AtomicInteger();
-        for (PairEndRead read : sample.reads) {
-            int finalConsensusCliqueIndex = consensusCliqueIndex;
-            tasks.add(() -> {
-                int min = 1_000_000;
-                List<Integer> minI = new ArrayList<>();
-                // for each clique find the distance and overlap with the read
-                for (int i = 0; i < allCliquesCharacters.size(); i++) {
-                    int d = 0;
-                    int coincidences = 0; //overlap in positions
-                    boolean isConsensusClique = i == finalConsensusCliqueIndex;
-                    String c = allCliquesCharacters.get(i);
-                    for (int j = 0; j < allPositionsInCliques.size(); j++) {
-                        if (allPositionsInCliques.get(j) < read.lOffset) {
-                            continue;
-                        }
-                        if (allPositionsInCliques.get(j) > read.lOffset + read.l.length() && allPositionsInCliques.get(j) > read.rOffset + read.r.length()) {
-                            break;
-                        }
-                        char charAtPosition = readCharAtPosition(read, allPositionsInCliques.get(j));
-                        //increase distance
-                        if (charAtPosition != 'N') {
-                            if (charAtPosition != c.charAt(j)) {
-                                d++;
-                            }
-                            //coincidence with current clique
-                            if (c.charAt(j) != consensus().charAt(allPositionsInCliques.get(j))) {
-                                coincidences++;
-                            }
-                            //coincidence with any cluque snp. Only for consensus clique
-                            if (isConsensusClique) {
-                                coincidences++;
-                            }
-                        }
-                    }
-                    if (coincidences != d && d < min && coincidences > 0) {
-                        min = d;
-                        minI = new ArrayList<>();
-                    }
-                    if (d == min && coincidences > 0) {
-                        minI.add(i);
-                    }
-                }
-                if (iter.incrementAndGet() % 100000 == 0) {
-                    logSame("\r" + iter.get());
-                }
-                return minI;
-            });
-
-        }
-        try {
-            List<Future<List<Integer>>> futures = Start.executor.invokeAll(tasks);
-            for (int i = 0; i < sample.reads.size(); i++) {
-                List<Integer> minI = futures.get(i).get();
-                PairEndRead read = sample.reads.get(i);
-                if (!minI.isEmpty()) {
-                    minI.forEach(e -> clusters.get(allCliquesCharacters.get(e)).add(read));
-                }
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            e.printStackTrace();
-        }
-        log("");
-        return clusters;
-    }
-
     public long calculateO12(long o12, int first, int j) {
         //subtract N2 and false 12 from o12
         for (int k = 0; k < struct.rowMinors[j].length; k++) {
@@ -971,40 +1153,6 @@ public class SNVIlluminaMethod extends AbstractSNV {
         return o21;
     }
 
-    private void addEdgesFromKnowsHaplotypes(List<Set<Integer>> adjacencyList) {
-        int threshold = Start.tryParseInt(Start.settings.getOrDefault("-ct", "100"), 100);
-        for (int i = 0; i < adjacencyList.size(); i++) {
-            if (adjacencyList.get(i).size() == 0) {
-                continue;
-            }
-            int first = i / minorCount;
-            for (int j = i + 1; j < adjacencyList.size(); j++) {
-                if (adjacencyList.get(j).size() == 0) {
-                    continue;
-                }
-
-                int second = j / minorCount;
-                if (first == second) {
-                    continue;
-                }
-                if (adjacencyList.get(i).contains(j)) {
-                    continue;
-                }
-                int allele1 = getAllele(i);
-                int allele2 = getAllele(j);
-
-                char m1 = al.charAt(allele1);
-                char m2 = al.charAt(allele2);
-                int hits = hitsInKnownHaplotypes(first, m1, second, m2);
-
-                if (hits > threshold) {
-                    adjacencyList.get(i).add(j);
-                    adjacencyList.get(j).add(i);
-                    log("Connect " + first + " " + second + " " + m1 + " " + m2 + " hits = " + hits);
-                }
-            }
-        }
-    }
 
     private int hitsInKnownHaplotypes(int first, char m1, int second, char m2) {
         String key = first + "_" + second + m1 + m2;
@@ -1022,8 +1170,41 @@ public class SNVIlluminaMethod extends AbstractSNV {
         return result;
     }
 
-    private String getCorrelationKey(int first, int second, char m1, char m2) {
-        return first + m1 + "_" + second + m2;
+    /**
+     * Calculates the fragment length of the sample - the length of read fragment in 90-th percentile
+     *
+     * @return fragment length
+     */
+    protected int calculateFragmentLength() {
+        int[] fragmentCount = new int[sample.referenceLength];
+        for (PairEndRead read : sample.reads) {
+            if (read.rOffset != -1) {
+                int length = read.rOffset + read.r.length() - read.lOffset;
+                fragmentCount[length]++;
+            } else {
+                fragmentCount[read.l.length()]++;
+            }
+        }
+        int count = 0;
+        int readsCount = sample.reads.size();
+        for (int i = 0; i < fragmentCount.length; i++) {
+            count += fragmentCount[i];
+            if (count > readsCount * 0.9) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Calculates median most covered position
+     *
+     * @return median most covered position
+     */
+    private int mostCoveredPosition() {
+        int maxCoverege = Arrays.stream(struct.readsAtPosition).mapToInt(r -> r.length).max().getAsInt();
+        int[] maxCoveragePositions = IntStream.range(0, struct.readsAtPosition.length).filter(i -> struct.readsAtPosition[i].length == maxCoverege).toArray();
+        return maxCoveragePositions[maxCoveragePositions.length / 2];
     }
 
     @Override

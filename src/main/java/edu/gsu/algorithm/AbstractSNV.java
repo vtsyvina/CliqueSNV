@@ -13,6 +13,7 @@ import edu.gsu.util.Utils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -27,34 +28,45 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public abstract class AbstractSNV {
-    public int CLOSE_POSITIONS_THRESHOLD = 5;
-    public static final double NO_EDGE_THRESHOLD = 0.1;
+    public double NON_EDGE_T_FREQ;
+    public int CLOSE_POSITIONS_THRESHOLD = 0;
+    public static final double NO_EDGE_THRESHOLD = 0.0001;
     public static final int MINIMUM_READS_FOR_NO_EDGE = 50;
-    protected final double HAPLOTYPE_CUT_THRESHOLD;
+    protected double HAPLOTYPE_CUT_THRESHOLD;
     //    public static final double GREY_ZONE_NO_EDGE_THROSHOLD = 0.1;
     public static String al = "ACGT-N";
     public static int minorCount = al.length() - 2;
     public boolean log = false;
     public int MIN_O22_THRESHOLD;
-    private double MIN_O22_FREQ;
+    protected double MIN_O22_FREQ;
     Map<String, long[]> osCache = new ConcurrentHashMap<>();
-    List<Clique> answer = new ArrayList<>();
+    public List<Clique> answer = new ArrayList<>();
     public double MAX_READ_ERROR = 0.1;
-    public double LOG_THRESHOLD;
-    public boolean USE_LOG_PVALUE;
+
+    public int sampleFragmentLength;
 
     // the range in which to reach for snps
-    public final int START_POSITION;
-    public final int END_POSITION;
+    public int START_POSITION;
+    public int END_POSITION;
 
-    AbstractSNV(int minThreshold, double minFreq) {
+    protected int workingWindowStart;
+    protected int workingWindowEnd;
+
+    /**
+     * We cannot user a constructor because we need to be able to calculate consensus first to adjust END_POSITION.
+     * Should be called in the end of the constructor
+     *
+     * @param minThreshold minimum threshold for absolute reads number support for an edge
+     * @param minFreq      minimum threashold for frequency of reads for an edge
+     */
+    protected void initParameters(int minThreshold, double minFreq) {
         this.MIN_O22_THRESHOLD = minThreshold;
         this.MIN_O22_FREQ = minFreq;
-        this.LOG_THRESHOLD = Double.parseDouble(Start.settings.getOrDefault("-lt", "200"));
-        this.USE_LOG_PVALUE = Start.settings.get("-lp") != null;
         this.HAPLOTYPE_CUT_THRESHOLD = Double.parseDouble(Start.settings.getOrDefault("-tf", "0.05"));
-        this.START_POSITION = Integer.parseInt(Start.settings.getOrDefault("-sp", "0"));
-        this.END_POSITION = Integer.parseInt(Start.settings.getOrDefault("-ep", "1000000"));
+        this.START_POSITION = Math.max(0, Integer.parseInt(Start.settings.getOrDefault("-sp", "0")));
+        this.END_POSITION = Math.min(consensus().length() - 1, Integer.parseInt(Start.settings.getOrDefault("-ep", "1000000")));
+        this.NON_EDGE_T_FREQ = Double.parseDouble(Start.settings.getOrDefault("-net", Double.toString(MIN_O22_FREQ)));
+        this.NON_EDGE_T_FREQ = Math.max(NON_EDGE_T_FREQ, 0.01); // TODO think too low -tf will give a lot FN non-edges - all cliques will merge
     }
 
     /**
@@ -64,7 +76,7 @@ public abstract class AbstractSNV {
      * @param adjacencyList Matrix with edges (in splitted sample)
      * @return set of cliques (clique - set of splitted positions that encode position + minor)
      */
-    Set<Set<Integer>> getMergedCliques(List<Set<Integer>> adjacencyList) {
+    List<Set<Integer>> getMergedCliques(List<Set<Integer>> adjacencyList) {
         if (Start.settings.getOrDefault("-cm", "accurate").equals("transitive")) {
             return newCliquesFinding(adjacencyList);
         }
@@ -89,6 +101,9 @@ public abstract class AbstractSNV {
         int matches = 0;
         for (Integer i : c1) {
             for (Integer i2 : c2) {
+                if (i.equals(i2)) { //TODO think about it
+                    matches++;
+                }
                 if (i / minorCount == i2 / minorCount && i % minorCount != i2 % minorCount) {
                     return 0;
                 }
@@ -113,7 +128,7 @@ public abstract class AbstractSNV {
     /**
      * Transforms position + minor into splitted SNP position
      */
-    int splittedPosition(int pos, char minor) {
+    int splitPosition(int pos, char minor) {
         int r = pos * minorCount;
         int allele = al.indexOf(minor) >= Utils.getMajorAllele(consensus(), al, pos) ? al.indexOf(minor) - 1 : al.indexOf(minor);
         return r + allele;
@@ -144,12 +159,11 @@ public abstract class AbstractSNV {
      * Transform each clique into a string of equal length. The string corresponds to clique representation in all positions
      * that are covered by any clique. If clique doesn't have some position in it, than consensus allele will be in this position
      *
-     * @param struct                SNV structure
      * @param cliques               Set of cliques in form of splitted SNPs(where position and minor are encoded in a single number)
      * @param allPositionsInCliques List of all positions covered by any clique
      * @return list with strings representing given cliques
      */
-    List<String> getAllCliquesCharacters(SNVStructure struct, Set<Set<Integer>> cliques, List<Integer> allPositionsInCliques) {
+    List<String> getAllCliquesCharacters(List<Set<Integer>> cliques, List<Integer> allPositionsInCliques) {
         List<String> allCliquesCharacters = new ArrayList<>();
         StringBuilder str = new StringBuilder();
         allPositionsInCliques.forEach(i -> str.append(consensus().charAt(i)));
@@ -279,7 +293,7 @@ public abstract class AbstractSNV {
     /**
      * Specify reads' technology
      *
-     * @return
+     * @return Technology(Illumina or PacBio)
      */
     protected abstract Technology technology();
 
@@ -303,11 +317,13 @@ public abstract class AbstractSNV {
      * Returns p-value between splitted allele i and splitted allele j
      * Returns 0 if O22 / (MAX_READ_ERROR * O11 + MAX_READ_ERROR * (O12 + O21)) > MAX_READ_ERROR - this cannot be explained by read errors
      *
-     * @param i splitted allele
-     * @param j splitted allele
-     * @return
+     * @param i split allele
+     * @param j split allele
+     * @return p-value for i,j pair
      */
     public abstract double getP(int i, int j);
+
+    public abstract double getNonEndgeP(int i, int j);
 
     public boolean hitsFitThreshold(int hits, long coverage) {
         return hits >= MIN_O22_THRESHOLD && ((double) hits) / coverage > MIN_O22_FREQ;
@@ -316,13 +332,13 @@ public abstract class AbstractSNV {
     /**
      * Checks if for given Oij there exist 22 edge (correlation between minors)
      *
-     * @param o11
-     * @param o12
-     * @param o21
-     * @param o22
-     * @param reads
-     * @param adjustment
-     * @param referenceLength
+     * @param o11             O11
+     * @param o12             O12
+     * @param o21             O22
+     * @param o22             O22
+     * @param reads           number of reads covering both positions
+     * @param adjustment      Bonferroni  adjustment
+     * @param referenceLength sample reference length
      * @return true if minors have correlation, false otherwise
      */
     public boolean hasO22Edge(long o11, long o12, long o21, long o22, long reads, double adjustment, int referenceLength) {
@@ -333,8 +349,8 @@ public abstract class AbstractSNV {
         if (p < 1E-12) {
             return true;
         } else {
-            double pvalue = USE_LOG_PVALUE ? Utils.binomialLogPvalue((int) o22, p, (int) reads) : Utils.binomialPvalue((int) o22, p, (int) reads);
-            boolean fl = USE_LOG_PVALUE ? pvalue > LOG_THRESHOLD : pvalue < adjustment / (referenceLength * 1. * (referenceLength - 1) / 2);
+            double pvalue = Utils.binomialOneMinusPvalue((int) o22, p, (int) reads);
+            boolean fl = pvalue < adjustment / (referenceLength * 1. * (referenceLength - 1) / 2);
             return fl
                     || o22 / (MAX_READ_ERROR * o11 + (1 - MAX_READ_ERROR) * (o12 + o21)) > MAX_READ_ERROR;
         }
@@ -348,7 +364,7 @@ public abstract class AbstractSNV {
                 for (int i = 0; i < consensus().length(); i++) {
                     if (sequence.charAt(i)
                             != consensus().charAt(i)) {
-                        tmp.add(splittedPosition(i, sequence.charAt(i)));
+                        tmp.add(splitPosition(i, sequence.charAt(i)));
                     }
 
                 }
@@ -361,25 +377,35 @@ public abstract class AbstractSNV {
     }
 
     public void outputAnswerChecking(List<SNVResultContainer> snvResultContainers) {
+        if (snvResultContainers.size() > 0) {
+            outputAnswerChecking(snvResultContainers, 0, snvResultContainers.get(0).haplotype.length());
+        }
+    }
+
+    public void outputAnswerChecking(List<SNVResultContainer> snvResultContainers, int startPosition, int endPosition) {
         if (Start.answer != null && !snvResultContainers.isEmpty()) {
             try {
                 for (int i = 0; i < Start.answer.reads.length; i++) {
                     String ans = Start.answer.reads[i].substring(0, snvResultContainers.get(0).haplotype.length());
                     HammingDistance hd = new HammingDistance();
-                    if (snvResultContainers.stream().anyMatch(s -> hd.apply(s.haplotype, ans) == 0)) {
-                        log("Found haplotype for " + answer.get(i));
+                    int min = ans.length();
+                    int minI = 0;
+                    for (int j = 0; j < snvResultContainers.size(); j++) {
+                        String haplotype = snvResultContainers.get(j).haplotype;
+                        int distance = hd.apply(ans.substring(startPosition, endPosition), haplotype.substring(startPosition, endPosition));
+                        if (distance < min) {
+                            min = distance;
+                            minI = j;
+                        }
+                    }
+                    if (min == 0) {
+                        log("Found haplotype " + Utils.smartDoubleToString(snvResultContainers.get(minI).frequency) + " for " + answer.get(i));
                     } else {
                         log("Failed to find haplotype for " + answer.get(i));
-                        int min = ans.length();
-                        int minI = 0;
-                        for (int j = 0; j < snvResultContainers.size(); j++) {
-                            String haplotype = snvResultContainers.get(j).haplotype;
-                            if (hd.apply(ans, haplotype) < min) {
-                                min = hd.apply(ans, haplotype);
-                                minI = j;
-                            }
-                        }
-                        log(" closest is within " + min + " distance " + snvResultContainers.get(minI).haploClique);
+                        log(" closest is within " + min + " distance " + Utils.smartDoubleToString(snvResultContainers.get(minI).frequency) + " "
+                                + Utils.stringDifference(snvResultContainers.get(minI).haplotype, ans, startPosition, endPosition) + " "
+                                + snvResultContainers.get(minI).haploClique);
+                        log(" clique " + snvResultContainers.get(minI).sourceClique);
                     }
                 }
             } catch (IllegalArgumentException e) {
@@ -392,19 +418,21 @@ public abstract class AbstractSNV {
     /**
      * Will find all possible merged cliques based on edges between cliques and 'no edges'
      */
-    private Set<Set<Integer>> slowCliquesMerging(List<Set<Integer>> adjacencyList) {
+    private List<Set<Integer>> slowCliquesMerging(List<Set<Integer>> adjacencyList) {
         long st = System.currentTimeMillis();
 //        List<Set<Integer>> cliques = new ArrayList<>(newCliquesFinding(adjacencyList));
         List<Set<Integer>> cliques = AlgorithmUtils.findCliquesIgnoreIsolated(adjacencyList).stream().filter(c -> c.size() > 1).collect(Collectors.toList());
-
-        if (log && cliques.size() < 150 && !cliques.isEmpty())
-            cliques.stream().map(c -> new Clique(c, consensus())).forEach(System.out::println);
+        if (log && cliques.size() < 300 && !cliques.isEmpty())
+            System.out.println("Found cliques:");
+        cliques.stream().map(c -> new Clique(c, consensus())).forEach(System.out::println);
+        System.out.println("End found cliques");
         if (cliques.isEmpty()) {
-            return new HashSet<>();
+            return new ArrayList<>();
         }
         log("Cliques time " + (System.currentTimeMillis() - st));
         log("Cliques before merge " + cliques.size());
-        double average = cliques.stream().mapToInt(Set::size).average().getAsDouble();
+        checkMissmatchesWithAnswer(cliques);
+        double average = cliques.stream().mapToInt(Set::size).average().orElse(0);
         log("Average clique size " + average);
         //average < 2.001 && cliques.size() > 500
         // TODO think about it!
@@ -454,13 +482,14 @@ public abstract class AbstractSNV {
         for (int i = 0; i < cliques.size(); i++) {
             cAdList.add(new HashSet<>());
             for (int j = 0; j < cliques.size(); j++) {
-                if (i == j || components[i] != components[j]) continue;
+                if (i == j || (components[i] != components[j] && !Start.settings.containsKey("-ignorecomponents")))
+                    continue;
                 cAdList.get(i).add(j);
             }
         }
         computeNoEdges(adjacencyList, cliques, realCliqueEdges, cAdList);
         if (!cAdList.isEmpty()) {
-            double degree = cAdList.stream().mapToInt(Set::size).average().getAsDouble();
+            double degree = cAdList.stream().mapToInt(Set::size).average().orElse(0);
             log("Average clique degree " + degree + " start compute cliques");
             // TODO think about it
             // we have a tl parameter, so maybe it is not neccesary
@@ -470,6 +499,7 @@ public abstract class AbstractSNV {
 //                return new HashSet<>();
 //            }
         }
+        log("There are " + Arrays.stream(components).max().orElse(0) + " components");
         st = System.currentTimeMillis();
         Set<Set<Integer>> cliqueCliques = AlgorithmUtils.findCliques(cAdList);
         log("Cliques cliques time " + (System.currentTimeMillis() - st));
@@ -477,7 +507,7 @@ public abstract class AbstractSNV {
 //        int[] components = AlgorithmUtils.connectedComponents(realCliqueEdges);
         if (components.length < 200) log("Components " + Arrays.toString(components));
 
-        Set<Set<Integer>> mergedCliques = new HashSet<>();
+        List<Set<Integer>> mergedCliques = new ArrayList<>();
         log("Cliques of cliques size " + cliqueCliques.size());
         // TODO think about it
 //        if (cliqueCliques.size() > 5000){
@@ -487,16 +517,27 @@ public abstract class AbstractSNV {
 //        }
         boolean fl = cliqueCliques.size() < 100;
         //merge cliques but if they are from different components then merge only for components (if A,B from 1, and C,D from 2. Then it will merge only A with B and C with D)
-        for (Set<Integer> setOfCliquesToMerge : cliqueCliques) {
-            if (fl) log(setOfCliquesToMerge.toString());
-            Map<Integer, Set<Integer>> cliquesByComponents = new HashMap<>();
-            for (Integer c : setOfCliquesToMerge) {
-                cliquesByComponents.putIfAbsent(components[c], new HashSet<>());
-                cliquesByComponents.get(components[c]).add(c);
+        if (!Start.settings.containsKey("-ignorecomponents")) {
+            for (Set<Integer> setOfCliquesToMerge : cliqueCliques) {
+                if (fl) log(setOfCliquesToMerge.toString());
+                Map<Integer, Set<Integer>> cliquesByComponents = new HashMap<>();
+                for (Integer c : setOfCliquesToMerge) {
+                    cliquesByComponents.putIfAbsent(components[c], new HashSet<>());
+                    cliquesByComponents.get(components[c]).add(c);
+                }
+                for (Set<Integer> clcl : cliquesByComponents.values()) {
+                    Set<Integer> newC = new HashSet<>();
+                    for (Integer cl : clcl) {
+                        newC.addAll(cliques.get(cl));
+                    }
+                    mergedCliques.add(newC);
+                }
             }
-            for (Set<Integer> clcl : cliquesByComponents.values()) {
+        } else {
+            for (Set<Integer> setOfCliquesToMerge : cliqueCliques) {
+                if (fl) log(setOfCliquesToMerge.toString());
                 Set<Integer> newC = new HashSet<>();
-                for (Integer cl : clcl) {
+                for (Integer cl : setOfCliquesToMerge) {
                     newC.addAll(cliques.get(cl));
                 }
                 mergedCliques.add(newC);
@@ -508,7 +549,7 @@ public abstract class AbstractSNV {
         Set<Set<Integer>> toRemove = new HashSet<>();
         for (Set<Integer> clique : mergedCliques) {
             for (Set<Integer> clique2 : mergedCliques) {
-                if (clique != clique2 && clique2.containsAll(clique)) {
+                if (clique != clique2 && clique.size() < clique2.size() && clique2.containsAll(clique)) {
                     toRemove.add(clique);
                 }
             }
@@ -521,6 +562,34 @@ public abstract class AbstractSNV {
 //            return new HashSet<>();
 //        }
         return mergedCliques;
+    }
+
+    protected void checkMissmatchesWithAnswer(Collection<Set<Integer>> cliques) {
+        if (Start.answer != null) {
+            int[] assignment = new int[cliques.size()];
+            int[] missmatches = new int[cliques.size()];
+            int i = 0;
+            for (Set<Integer> clique : cliques) {
+                missmatches[i] = cliques.size();
+                assignment[i] = -1;
+                for (int j = 0; j < answer.size(); j++) {
+                    Clique ans = answer.get(j);
+                    Set<Integer> intersection = new HashSet<>(clique);
+                    intersection.retainAll(ans.splittedSnps);
+                    if (clique.size() - intersection.size() < missmatches[i]) {
+                        missmatches[i] = clique.size() - intersection.size();
+                        assignment[i] = j;
+                    }
+                }
+                i++;
+            }
+            System.out.println("Sizes");
+            System.out.println(Arrays.toString(cliques.stream().mapToInt(Set::size).toArray()));
+            System.out.println("Missmatches");
+            System.out.println(Arrays.toString(missmatches));
+            System.out.println("Assignments");
+            System.out.println(Arrays.toString(assignment));
+        }
     }
 
     /**
@@ -554,9 +623,10 @@ public abstract class AbstractSNV {
             tasks.add(new NotEdgeParallelTask(this, cliques, adjacencyList, first.get(i), second.get(i)));
         }
         log("Start finding not edges");
+        int nNoEdges = 0;
         try {
             List<Future<List<String>>> futures = Start.executor.invokeAll(tasks);
-            futures.forEach(future -> {
+            for (Future<List<String>> future : futures) {
                 try {
                     List<String> strings = future.get();
                     for (String s : strings) {
@@ -568,25 +638,28 @@ public abstract class AbstractSNV {
                         cAdList.get(j).remove(i);
                         realCliqueEdges.get(i).remove(j);
                         realCliqueEdges.get(j).remove(i);
+                        nNoEdges++;
                     }
                 } catch (InterruptedException | ExecutionException e) {
                     System.err.println("Error! Parallel tasks were not successful on get");
                     e.printStackTrace();
                 }
-            });
+            }
         } catch (InterruptedException e) {
             System.err.println("Error! Parallel tasks were not successful on invoke");
             e.printStackTrace();
         }
         log(" - DONE");
+        log("There are " + nNoEdges + " no edges");
+        log("There are " + NotEdgeParallelTask.FP + " FP and " + NotEdgeParallelTask.FN + " FN");
     }
 
     /**
      * Merge just best matching cliques. So one clique will match only one haplotype
      */
-    private Set<Set<Integer>> fastCliquesMerging(List<Set<Integer>> adjacencyList) {
+    private List<Set<Integer>> fastCliquesMerging(List<Set<Integer>> adjacencyList) {
         long st = System.currentTimeMillis();
-        Set<Set<Integer>> cliques = AlgorithmUtils.findCliquesIgnoreIsolated(adjacencyList).stream().filter(c -> c.size() > 1).collect(Collectors.toSet());
+        List<Set<Integer>> cliques = AlgorithmUtils.findCliquesIgnoreIsolated(adjacencyList).stream().filter(c -> c.size() > 1).collect(Collectors.toList());
         log("Cliques time " + (System.currentTimeMillis() - st));
         log("Cliques before merge " + cliques.size());
         if (log && !cliques.isEmpty())
@@ -620,6 +693,7 @@ public abstract class AbstractSNV {
                 // if we found two cliques without 'no edge' and they have something in common
                 if (bestScore > 0) {
                     HashSet<Integer> newClique = new HashSet<>(clique);
+                    assert bestClique != null;
                     log("Merge " + new Clique(clique, consensus()) + " " + new Clique(bestClique, consensus()) + " " + cliques.size());
                     newClique.addAll(bestClique);
                     mergedCliques.add(newClique);
@@ -631,14 +705,14 @@ public abstract class AbstractSNV {
                     alreadyMerged.add(clique);
                 }
             }
-            cliques = mergedCliques;
+            cliques = new ArrayList<>(mergedCliques);
             mergedCliques = new HashSet<>();
             alreadyMerged = new HashSet<>();
         }
         return cliques;
     }
 
-    private Set<Set<Integer>> newCliquesFinding(List<Set<Integer>> adjacencyList) {
+    private List<Set<Integer>> newCliquesFinding(List<Set<Integer>> adjacencyList) {
         List<Set<Integer>> newAList = new ArrayList<>(adjacencyList.size());
         for (Set<Integer> integers : adjacencyList) {
             newAList.add(new HashSet<>(integers));
@@ -656,7 +730,7 @@ public abstract class AbstractSNV {
             for (int j = i + 1; j < nonIsolated.length; j++) {
                 int first = nonIsolated[i];
                 int second = nonIsolated[j];
-                if (getP(first, second) > 0.01 && Math.abs(first - second) / minorCount > 5) {
+                if (getP(first, second) > 0.01 && Math.abs(first - second) / minorCount > CLOSE_POSITIONS_THRESHOLD) {
                     newAList.get(first).remove(second);
                     newAList.get(second).remove(first);
                     //remove transitive edges from neighborhood or first vertex that are connected to second vertex
@@ -687,7 +761,7 @@ public abstract class AbstractSNV {
                 }
             }
         }
-        return AlgorithmUtils.findCliques(newAList).stream().filter(c -> c.size() > 1).collect(Collectors.toSet());
+        return AlgorithmUtils.findCliques(newAList).stream().filter(c -> c.size() > 1).collect(Collectors.toList());
     }
 
     /**
@@ -698,26 +772,31 @@ public abstract class AbstractSNV {
      * @return true if there is 'no edge', false - otherwise
      */
     public boolean noEdge(Set<Integer> c1, Set<Integer> c2, List<Set<Integer>> adjacencyList) {
-        boolean wasAlready = false;
+        return noEdge(c1, c2, adjacencyList, false);
+    }
+
+    public boolean noEdge(Set<Integer> c1, Set<Integer> c2, List<Set<Integer>> adjacencyList, boolean trueLink) {
         if (c1 == null || c2 == null) {
             return false;
         }
         for (Integer i : c1) {
             for (Integer j : c2) {
-                if (i / minorCount == j / minorCount && !i.equals(j)) {
+                int first = i / minorCount;
+                int second = j / minorCount;
+                if (first == second && !i.equals(j)) {
                     return true;
                 }
-                if (Math.abs(i - j) < CLOSE_POSITIONS_THRESHOLD * minorCount || adjacencyList.get(i).contains(j) || getCommonReadsCount(i, j) < MINIMUM_READS_FOR_NO_EDGE) {
+                if (i.equals(j) || Math.abs(i - j) < CLOSE_POSITIONS_THRESHOLD * minorCount || adjacencyList.get(i).contains(j) || getCommonReadsCount(i, j) < MINIMUM_READS_FOR_NO_EDGE
+                        || Math.abs(Math.abs(first - second) - sampleFragmentLength) <= 9) { //TODO think
                     continue;
                 }
-
-                double p = getP(i, j);
-                if (p > NO_EDGE_THRESHOLD) { // || p > GREY_ZONE_NO_EDGE_THROSHOLD && wasAlready) {
+                double p = getNonEndgeP(i, j);
+                if (p < NO_EDGE_THRESHOLD) {
+                    if (trueLink) {
+                        log(first + " " + second + " " + p + " " + Arrays.toString(getOs(i, j)));
+                    }
                     return true;
                 }
-//                if (p > GREY_ZONE_NO_EDGE_THROSHOLD) {
-//                    wasAlready = true;
-//                }
             }
         }
         return false;
@@ -725,22 +804,26 @@ public abstract class AbstractSNV {
 
     public List<SNVResultContainer> getDefaultHaplotype() {
         String haplotype = consensus();
-        Clique haplotypeClique = new Clique(haplotype, haplotype) ;
+        Clique haplotypeClique = new Clique(haplotype, haplotype);
         SNVResultContainer container;
-        if (technology() == Technology.ILLUMINA){
-            container = new SNVResultContainer("", haplotypeClique,haplotypeClique, haplotype, getIlluminaReads(), null, 1);
-        } else{
-            container = new SNVResultContainer("", haplotypeClique,haplotypeClique, haplotype, null, getPacBioCluster(), 1);
+        if (technology() == Technology.ILLUMINA) {
+            container = new SNVResultContainer("", haplotypeClique, haplotypeClique, haplotype, getIlluminaReads(), null, 1);
+        } else {
+            container = new SNVResultContainer("", haplotypeClique, haplotypeClique, haplotype, null, getPacBioCluster(), 1);
         }
         List<SNVResultContainer> result = new ArrayList<>();
         result.add(container);
         return result;
     }
 
+    protected List<SNVResultContainer> filterHaplotypeFrequencies(List<SNVResultContainer> totalResults, double threshold) {
+        totalResults = totalResults.stream().filter(ha -> ha.frequency > threshold).sorted((s1, s2) -> -Double.compare(s1.frequency, s2.frequency)).collect(Collectors.toList());
+        return totalResults;
+    }
+
     abstract protected List<PairEndRead> getIlluminaReads();
 
     abstract protected Map<Integer, String> getPacBioCluster();
-
 
     public boolean isLog() {
         return log;

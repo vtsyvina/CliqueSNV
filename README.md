@@ -1,7 +1,7 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 1.5.7, January 2021)
+Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 2.0.0, April 2021)
 
 ## How to build
 
@@ -43,9 +43,6 @@ There are several available parameters:
 
 - ``-t`` - minimum threshold for O22 value. Default is 10
 - ``-tf`` - minimum threshold for 022 frequency relative to the reads' coverage. Default value os 0.05. For more sensitive algorithm work decrease this parameter (may significantly increase runtime for diverse samples). **Note** Haplotypes with frequency <tf won't get into output
-- ``-fc`` - "true"\"false" flag that tells if the tool should do frequency correction. In diverse samples the frequency of frequent haplotypes can be underestimated
-  and less frequent haplotypes overestimated. If "true" the tool will apply frequency correction that should increase the specificity(default since ver 1.5.0). If "false" no additional correction is applied (default for versions prior 1.5.0). Default is "true"
-- ``-ch`` - "true"\"false" flag to cut haplotypes with estimated frequencies <"-tf" parameter. Default is "true" since version 1.5.0, "false" was default behavior in version prior 1.5.0
 - ``-el`` - edges limit in SNPs graph. More edges will make the algorithm more sensitive. Too much links in the graph can lead to exponential explosion in time when calculating cliques. In version 1.5.0 only up to -el most frequent edges(SNPs supported by the most number of reads) are chosen. Default is 700(no limit in versions prior to 1.5.0) - should work good for the absolute majority of samples.  
 - ``-sp`` - start position to search for SNPs (0-based, inclusive). If you hae a large genome, but is interested only in SNPS in specific region you can specify the range. It will make the program faster and more precise. 
 But the output haplotypes still will be the whole genome(you can cut them using -os -oe parameters) - for example see below. Default value is 0
@@ -198,6 +195,16 @@ Where name is just an index + haplotype frequency
 
 **For Variant Calling** problem program produces standard VCF file. Standard is described <a href="https://samtools.github.io/hts-specs/VCFv4.2.pdf">here</a>
 
+## New in version 2.0.0 (sliding window approach)
+CliqueSNV could perform poorly for samples with long references and significant diversity because of many linked SNPs for Illumina data.
+To address it in version 2.0.0, we introduced a new approach to build haplotypes in windows, increasing the size of the window on each iteration.
+The window size is equal to the sample's fragment length (usually 250 for single-end reads and around 500 for pair-end reads). 
+The haplotypes reconstruction starts in the region of the highest coverage end extend the window to the left or right based on coverage.
+
+This approach allows CliqueSNV to work on more diverse samples or samples with longer reference - 
+we tested the new version on benchmarks with a reference length of 5000-10000, and CliqueSNV was able to reconstruct ground truth haplotypes successfully.
+
+
 ## Versions:
 1.1.0 - add allele frequency for variant calling
 
@@ -286,6 +293,11 @@ the runtime on powerful machines
 1.5.7
 - "-fc", "-ch" parameters to provide less conservative strategy as in versions 1.4.*
 - put 'N' instead of '-' in haplotypes if the position is not covered by any read
+
+2.0.0
+- New "sliding window" approach in haplotypes reconstructing. More details above
+- Small changes to handle deletion regions better and SNPs on the edges of reads
+- "-fc", "-ch" - parameters not supported because of a new approach
 
 ## Any questions
 With any questions. please, contact: v.tsyvina@gmail.com

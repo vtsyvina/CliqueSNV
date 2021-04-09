@@ -15,13 +15,13 @@ import static edu.gsu.algorithm.SNVIlluminaMethod.minorCount;
 import static edu.gsu.util.Utils.humanReadableSI;
 
 public class FindIlluminaEdgesParallelTask implements Callable<List<FindIlluminaEdgesParallelTask.EdgeSummary>> {
-    private SNVStructure struct;
-    private int allele;
-    private SNVIlluminaMethod method;
-    private IlluminaSNVSample sample;
-    private int[][] commonReads;
+    private final SNVStructure struct;
+    private final int allele;
+    private final SNVIlluminaMethod method;
+    private final IlluminaSNVSample sample;
+    private final int[][] commonReads;
 
-    private boolean ignoreDeletion;
+    private final boolean ignoreDeletion;
 
     public FindIlluminaEdgesParallelTask(SNVStructure struct, int allele, SNVIlluminaMethod method, IlluminaSNVSample sample, int[][] commonReads, boolean ignoreDeletion) {
         this.struct = struct;
@@ -121,7 +121,7 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
 //                }
                 //start calculate p-value, starting with p
                 //double p = struct.rowMinors[i].length/(double)(sample.reads.length - struct.rowN[first].length);
-                if (method.hasO22Edge(o11, o12, o21, o22, reads, 0.0000001, sample.referenceLength)) {
+                if (hasO22Edge(o11, o12, o21, o22, reads, 0.0000001, sample.referenceLength, first, second)) {
                     boolean fl = false;
                     if (Start.answer != null) {
                         for (String read : Start.answer.reads) {
@@ -137,15 +137,15 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
                             first, second, m1, m2, humanReadableSI(l), humanReadableSI(struct.majorsInRow[first]),
                             humanReadableSI(struct.rowMinors[j].length), humanReadableSI(struct.majorsInRow[second]),
 
-                            method.USE_LOG_PVALUE ? Utils.binomialLogPvalue((int) o22, p, (int) reads) : Utils.binomialPvalue((int) o22, p, (int) reads),
+                            Utils.binomialOneMinusPvalue((int) o22, p, (int) reads),
                             reads, o11, o12, o21, o22, fl,
-                            (o22 / (0.1 * o11 + (1 - 0.1) * (o12 + o21)))
+                            (o22 / (method.MAX_READ_ERROR * o11 + (1 - method.MAX_READ_ERROR) * (o12 + o21)))
                             )
                     );
                     double freq = o22 * 1. / commonReads[first][second];
                     //correlationMap.put(getCorrelationKey(first, second, m1, m2), new CorrelationContainer(o11, o12, o21, o22, reads));
                     result.add(new EdgeSummary(allele, j, o11, o12, o21, o22,
-                            method.USE_LOG_PVALUE ? Utils.binomialLogPvalue((int) o22, p, (int) reads) : Utils.binomialPvalue((int) o22, p, (int) reads),
+                            Utils.binomialOneMinusPvalue((int) o22, p, (int) reads),
                             freq, fl));
                 }
             }
@@ -174,7 +174,27 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
         resultList.add(new EdgeSummary(i, j, o11, o12, o21, o22, Utils.binomialLogPvalue((int) o22, p, (int) reads), freq, fl));
     }
 
-    public class EdgeSummary {
+    public boolean hasO22Edge(long o11, long o12, long o21, long o22, long reads, double adjustment, int referenceLength, int first, int second) {
+        double p = (o12 * o21) / ((double) o11 * reads);
+        if (p > 1) {
+            return false;
+        }
+        if (p < 1E-12) {
+            return true;
+        } else {
+            double pvalue = Utils.binomialOneMinusPvalue((int) o22, p, (int) reads);
+
+            boolean maxReadErrorExceeded = false;
+            // check only for paired reads or single reads with close enough SNPs
+            if (!(sample.singleRead && Math.abs(first - second) > 0.8 * method.sampleFragmentLength)) {
+                maxReadErrorExceeded = o22 / (method.MAX_READ_ERROR * o11 + (1 - method.MAX_READ_ERROR) * (o12 + o21)) > method.MAX_READ_ERROR;
+            }
+            return pvalue < adjustment / (referenceLength * 1. * (referenceLength - 1) / 2)
+                    || maxReadErrorExceeded;
+        }
+    }
+
+    public static class EdgeSummary {
         public int i;
         public int j;
         public long o11, o12, o21, o22;
@@ -198,19 +218,17 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
 
         @Override
         public String toString() {
-            final StringBuilder sb = new StringBuilder("Edge{");
-            sb.append("i=").append(i / 4);
-            sb.append(", j=").append(j / 4);
-            sb.append(", o11=").append(o11);
-            sb.append(", o12=").append(o12);
-            sb.append(", o21=").append(o21);
-            sb.append(", o22=").append(o22);
-            sb.append(", p=").append(p);
-            sb.append(", freq=").append(relFreq);
-            sb.append(", t=").append(trueEdge);
-            sb.append(", s=").append(second);
-            sb.append('}');
-            return sb.toString();
+            return "Edge{" + "i=" + i / 4 +
+                    ", j=" + j / 4 +
+                    ", o11=" + o11 +
+                    ", o12=" + o12 +
+                    ", o21=" + o21 +
+                    ", o22=" + o22 +
+                    ", p=" + p +
+                    ", freq=" + relFreq +
+                    ", t=" + trueEdge +
+                    ", s=" + second +
+                    '}';
         }
     }
 }

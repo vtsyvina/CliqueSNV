@@ -25,10 +25,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -130,12 +130,12 @@ public class Start {
         }
         String pathname = settings.getOrDefault("-in", "data/Illumina_reads/reads.sam");
         IlluminaSNVSample sample = DataReader.getIlluminaPairedReads(new File(pathname));
-        System.out.println("read " + (System.currentTimeMillis() - start));
+        System.out.println("read time " + (System.currentTimeMillis() - start));
         SNVIlluminaMethod snvIlluminaMethod = new SNVIlluminaMethod(sample,
                 tryParseInt(settings.get("-t"), 10),
                 tryParseDouble(settings.get("-tf"), 0.05),
                 log);
-        Callable<List<SNVResultContainer>> task = snvIlluminaMethod::getHaplotypes;
+        Callable<List<SNVResultContainer>> task = snvIlluminaMethod::getHaplotypesV2;
         Future<List<SNVResultContainer>> future = executor.submit(task);
         long timeout = tryParseLong(settings.get("-tl"), DEFAULT_TIMEOUT);
         List<SNVResultContainer> haplotypes;
@@ -144,7 +144,7 @@ public class Start {
         } catch (InterruptedException | ExecutionException e) {
             future.cancel(true);
             e.printStackTrace();
-            if (errorMessage.equals("none")){
+            if (errorMessage.equals("none")) {
                 errorMessage = "Runtime error";
             }
             haplotypes = snvIlluminaMethod.getDefaultHaplotype();
@@ -178,7 +178,7 @@ public class Start {
             return;
         }
         IlluminaSNVSample sample = DataReader.getIlluminaPairedReads(input);
-        System.out.println("read " + (System.currentTimeMillis() - start));
+        System.out.println("read time " + (System.currentTimeMillis() - start));
         SNVIlluminaMethod snvIlluminaMethod = new SNVIlluminaMethod(sample,
                 tryParseInt(settings.get("-t"), 10),
                 tryParseDouble(settings.get("-tf"), 0.05),
@@ -188,7 +188,7 @@ public class Start {
         System.out.println("time,ms " + (System.currentTimeMillis() - start));
     }
 
-    private static void pacBioSNV(boolean test) throws IOException, ExecutionException, InterruptedException {
+    private static void pacBioSNV(boolean test) throws IOException {
         File file = new File(settings.getOrDefault("-in", "data/PacBio_reads/reads.sam"));
         if (!file.exists()) {
             System.out.printf("Input file %s does not exists%n", file.getCanonicalPath());
@@ -205,7 +205,7 @@ public class Start {
         Callable<List<SNVResultContainer>> task = snvPacBioMethod::getHaplotypes;
         Future<List<SNVResultContainer>> future = executor.submit(task);
         long timeout = tryParseLong(settings.get("-tl"), DEFAULT_TIMEOUT);
-        List<SNVResultContainer> haplotypes = null;
+        List<SNVResultContainer> haplotypes;
         try {
             haplotypes = future.get(timeout, TimeUnit.SECONDS);
         } catch (InterruptedException | ExecutionException e) {
@@ -239,10 +239,11 @@ public class Start {
             System.out.printf("Input file %s does not exists%n", file.getCanonicalPath());
             return;
         }
-        String consensus = "";
-        String name = "";
+        String consensus;
+        String name;
         if (method.equals("pacbio")) {
             Sample sample = DataReader.getPacBioReads(file);
+            assert sample != null;
             SNVPacBioMethod snvPacBioMethod = new SNVPacBioMethod(sample, log);
             consensus = snvPacBioMethod.consensus();
             name = sample.name;
@@ -268,7 +269,7 @@ public class Start {
             return;
         }
         int[][] profile;
-        String name = "";
+        String name;
         String alphabet = "ACGT-N";
         if (method.equals("pacbio")) {
             Sample sample = DataReader.getPacBioReads(file);
@@ -279,8 +280,8 @@ public class Start {
             profile = Utils.countCoverage(sample, alphabet);
             name = sample.name;
         }
-        Path path = preparePath(snvOutput+(name == null ? "profile.txt" : name + "_profile.txt"));
-        for (int i = 0; i < alphabet.length()-1; i++) {
+        Path path = preparePath(snvOutput + (name == null ? "profile.txt" : name + "_profile.txt"));
+        for (int i = 0; i < alphabet.length() - 1; i++) {
             StringBuilder builder = new StringBuilder();
             for (int j = 0; j < profile[i].length; j++) {
                 builder.append(profile[i][j]).append("\t");
@@ -304,9 +305,9 @@ public class Start {
                 System.out.println(" Error! -outDir is not specified for multiple files input. This parameter is mandatory for multiple file input");
                 return;
             }
-            ImputationTask.length = file.listFiles().length;
+            ImputationTask.length = Objects.requireNonNull(file.listFiles()).length;
             List<ImputationTask> tasks = new ArrayList<>();
-            for (File f : file.listFiles()) {
+            for (File f : Objects.requireNonNull(file.listFiles())) {
                 tasks.add(new ImputationTask(f));
             }
             ExecutorService executor = Executors.newFixedThreadPool(threadsNumber());
@@ -335,10 +336,10 @@ public class Start {
         System.out.println("time,ms " + (System.currentTimeMillis() - start));
     }
 
-    private static void pacBioSNVVC() throws IOException, ExecutionException, InterruptedException {
+    private static void pacBioSNVVC() throws IOException {
         File input = new File(settings.getOrDefault("-in", "data/PacBio_reads/reads.sam"));
         if (!input.exists()) {
-            System.out.println(String.format("Input file %s does not exists", input.getCanonicalPath()));
+            System.out.printf("Input file %s does not exists%n", input.getCanonicalPath());
             return;
         }
         Sample sample = DataReader.getPacBioReads(input);
@@ -356,7 +357,7 @@ public class Start {
     /**
      * Method for debug only. Run file with all given parameters
      */
-    private static void multiTest() throws IOException, ExecutionException, InterruptedException {
+    private static void multiTest() throws IOException, InterruptedException {
         File input = new File(settings.getOrDefault("-in", "data/tests.in"));
         List<String> strings = Files.readAllLines(input.toPath());
         for (String args : strings) {
@@ -400,7 +401,7 @@ public class Start {
         Path path;
         int start = Integer.parseInt(Start.settings.getOrDefault("-os", "0"));
         int end = Integer.parseInt(Start.settings.getOrDefault("-oe", String.valueOf(haplotypes.get(0).haplotype.length())));
-        if (end > haplotypes.get(0).haplotype.length()){
+        if (end > haplotypes.get(0).haplotype.length()) {
             end = haplotypes.get(0).haplotype.length();
         }
         int finalEnd = end;
@@ -527,12 +528,12 @@ public class Start {
             helpOutput(null, false);
         }
         // cut haplotypes below -tf value
-        if (!settings.containsKey("-ch")){
-            settings.put("-ch","true");
+        if (!settings.containsKey("-ch")) {
+            settings.put("-ch", "true");
         }
         // frequency correction with several runs with different -tf parameter
-        if(!settings.containsKey("-fc")){
-            settings.put("-fc","true");
+        if (!settings.containsKey("-fc")) {
+            settings.put("-fc", "true");
         }
         log = settings.containsKey("-log");
     }
@@ -638,7 +639,7 @@ public class Start {
     static class ImputationTask implements Callable<Integer> {
         static private AtomicInteger counter;
         static public int length;
-        private File file;
+        private final File file;
 
         ImputationTask(File file) {
             counter = new AtomicInteger();

@@ -19,6 +19,8 @@ public abstract class AbstractEM {
 
     protected double[][] pre;
 
+    protected double[][] pij;
+
     protected void init() {
         pre = new double[MAX_READ_LENGTH][MAX_MISSES];
         pre[1][0] = 1 - e;
@@ -43,6 +45,7 @@ public abstract class AbstractEM {
     }
 
     protected List<Double> calculateFrequencies(int haplotypesCount, int readsCount, double[][] h, boolean log) {
+        pij = new double[haplotypesCount][readsCount];
         double[] frequencies = new double[haplotypesCount];
         Arrays.fill(frequencies, 1 / (double) frequencies.length);
         double[] oldFrequencies;
@@ -72,7 +75,8 @@ public abstract class AbstractEM {
                         if (denominators[i] == 0.0) {
                             continue;
                         }
-                        result += finalOldFrequencies[finalJ] * h[finalJ][i] / denominators[i];
+                        pij[finalJ][i] = finalOldFrequencies[finalJ] * h[finalJ][i] / denominators[i];
+                        result += pij[finalJ][i];
                     }
                     return result;
                 });
@@ -91,11 +95,16 @@ public abstract class AbstractEM {
             for (int j = 0; j < haplotypesCount; j++) {
                 frequencies[j] = m[j] / sum;
             }
-            if (log) System.out.print("\r"+iter++);
+            //if (log) System.out.print("\r"+iter++);
         } while (euclidDistance(oldFrequencies, frequencies) > eps && iter < MAX_EM_ITER);
         if(log) System.out.println();
         return Arrays.stream(frequencies)
                 .boxed()
                 .collect(Collectors.toList());
     }
+
+    public double[][] getPij(){
+        return pij;
+    }
+
 }

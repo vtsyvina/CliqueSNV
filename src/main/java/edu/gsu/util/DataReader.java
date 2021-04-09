@@ -20,15 +20,11 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Pattern;
 
 /**
  * Class to read input data from standard input files
  */
 public class DataReader {
-
-    private static final Pattern begin = Pattern.compile("^-*");
-    private static final Pattern end = Pattern.compile("-*$");
 
     public static Sample readSample(File file) throws IOException {
         return readSample(file.toPath());
@@ -138,8 +134,10 @@ public class DataReader {
         readsSet.forEach((key1, value1) -> parts.get(index[0]++ % cores).put(key1, value1));
         List<Callable<List<PairEndRead>>> tasks = new ArrayList<>();
         AtomicInteger counter = new AtomicInteger();
+        AtomicInteger chimeraReads = new AtomicInteger();
+        AtomicInteger nonChimeraReads = new AtomicInteger();
         for (int i = 0; i < cores; i++) {
-            tasks.add(new ConvertTask(parts.get(i), sam4WebLogo, counter));
+            tasks.add(new ConvertTask(parts.get(i), sam4WebLogo, counter, chimeraReads, nonChimeraReads));
         }
         try {
             List<Future<List<PairEndRead>>> futures = Start.executor.invokeAll(tasks);
@@ -157,41 +155,43 @@ public class DataReader {
         }
         System.out.println(" DONE");
         System.out.println("Total reads number: " + pairedReads.size());
-        return new IlluminaSNVSample(file.getName().replaceFirst("[.][^.]+$", ""), pairedReads,
-                pairedReads.parallelStream().mapToInt(r -> Math.max(r.lOffset + r.l.length(), r.rOffset + r.r.length())).max().orElse(0));
-    }
-
-    private static String getSplittedRead(String read, int offset, String consensus, String alphabet) {
-        StringBuilder str = new StringBuilder();
-        for (int j = 0; j < read.length(); j++) {
-            int major = Utils.getMajorAllele(consensus, alphabet, offset + j);
-            int minor = 0;
-            for (int k = 0; k < alphabet.length() - 1; k++, minor++) {
-                if (minor == major) {
-                    minor++;
-                }
-                int allele = alphabet.indexOf(read.charAt(j));
-                str.append(allele == minor ? "2" : "1");
+        int single = 0;
+        int paired = 0;
+        for (PairEndRead pairedRead : pairedReads) {
+            if (pairedRead.rOffset == -1){
+                single++;
+            } else {
+                paired++;
             }
         }
-        return str.toString();
+        System.out.println("Among them there are "+paired+" paired reads and "+single+" single reads ");
+        System.out.println("Chimera reads "+chimeraReads+" non-chimera paired reads "+nonChimeraReads);
+        return new IlluminaSNVSample(file.getName().replaceFirst("[.][^.]+$", ""), pairedReads,
+                pairedReads.parallelStream().mapToInt(r -> Math.max(r.lOffset + r.l.length(), r.rOffset + r.r.length())).max().orElse(0), paired < single);
     }
 
     private static class ConvertTask implements Callable<List<PairEndRead>> {
         Map<String, List<SAMRecord>> readsSet;
         SAM4WebLogo sam4WebLogo;
         AtomicInteger counter;
+        AtomicInteger chimeraReads;
+        AtomicInteger nonChimeraPairedReads;
 
-        ConvertTask(Map<String, List<SAMRecord>> readsSet, SAM4WebLogo sam4WebLogo, AtomicInteger counter) {
+        ConvertTask(Map<String, List<SAMRecord>> readsSet, SAM4WebLogo sam4WebLogo, AtomicInteger counter, AtomicInteger chimeraReads, AtomicInteger nonChimeraPairedReads) {
             this.readsSet = readsSet;
             this.sam4WebLogo = sam4WebLogo;
             this.counter = counter;
+            this.chimeraReads = chimeraReads;
+            this.nonChimeraPairedReads = nonChimeraPairedReads;
         }
 
         @Override
         public List<PairEndRead> call() {
             List<PairEndRead> pairedReads = new ArrayList<>(readsSet.size());
             readsSet.forEach((key, value) -> {
+                if (pairedReads.size() % 200_000 == 0) {
+                    System.out.print("\r" + counter.addAndGet(200_000));
+                }
                 if (value.size() == 1) {
                     String s = sam4WebLogo.printRead(value.get(0), true);
                     //s = cutRead(s, value.get(0).getAlignmentStart());//end.matcher(begin.matcher(s).replaceAll("")).replaceAll("");
@@ -201,6 +201,12 @@ public class DataReader {
                             -1, key)
                     );
                 } else {
+                    if(value.size() > 2){
+                        chimeraReads.incrementAndGet();
+                        //return;
+                    } else{
+                        nonChimeraPairedReads.incrementAndGet();
+                    }
                     for (int i = 0; i < value.size(); i++) {
                         //if read is unpaired
                         if (!value.get(i).getReadPairedFlag()) {
@@ -215,6 +221,7 @@ public class DataReader {
                         }
                         for (int j = 0; j < value.size(); j++) {
                             if (value.get(i).getMateAlignmentStart() == value.get(j).getAlignmentStart()
+                                    && value.get(i).getAlignmentStart() == value.get(j).getMateAlignmentStart()
                                     && value.get(i).getAlignmentStart() <= value.get(j).getAlignmentStart()) {
                                 if (i == j) {
                                     String s = sam4WebLogo.printRead(value.get(i), true);
@@ -224,7 +231,8 @@ public class DataReader {
                                             value.get(i).getAlignmentStart() - 1,
                                             -1, key)
                                     );
-                                } else {
+                                    // strange case when both reads have different names but same alignment start. Such read will be added above
+                                } else if (value.get(i).getAlignmentStart() != value.get(j).getAlignmentStart()) {
                                     String s = sam4WebLogo.printRead(value.get(i), true);
                                     //s =  cutRead(s, value.get(i).getAlignmentStart());
                                     String s2 = sam4WebLogo.printRead(value.get(j), true);
@@ -240,27 +248,10 @@ public class DataReader {
                         }
                     }
                 }
-                if (pairedReads.size() % 100_000 == 0) {
-                    System.out.print("\r" + counter.addAndGet(100000));
-                }
+
             });
             return pairedReads;
         }
-
-        /**
-         * Read comes with leading and ending '-', we need to cut them
-         */
-//        private String cutRead(String read, int alignmentStart){
-//            read = read.substring(alignmentStart);
-//            int end = read.length()-1;
-//            for (int i = read.length()-1; i > 0; i--) {
-//                if (read.charAt(i) != '-'){
-//                    end = i+1;
-//                    break;
-//                }
-//            }
-//            return read.substring(0,end);
-//        }
 
     }
 }

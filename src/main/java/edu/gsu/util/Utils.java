@@ -8,10 +8,6 @@ import org.apache.commons.math3.distribution.BinomialDistribution;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 /**
  * Just class with some useful functions
@@ -106,9 +102,20 @@ public class Utils {
      * @return consensus
      */
     public static String consensus(double[][] profile, String alphabet) {
+        return consensus(profile, alphabet, true);
+    }
+
+    /**
+     * Return consensus for given profile. Put $ if all profile values equals 0
+     *
+     * @param profile  sample profile
+     * @param alphabet alphabet for profile
+     * @return consensus
+     */
+    public static String consensus(double[][] profile, String alphabet, boolean deletionAllowed) {
         char[] majors = new char[profile[0].length];
         for (int j = 0; j < profile[0].length; j++) {
-            int majorAllele = Utils.getMajorAllele(profile, j);
+            int majorAllele = Utils.getMajorAllele(profile, j, alphabet, deletionAllowed);
             majors[j] = majorAllele == -1 ? 'N' : alphabet.charAt(majorAllele);
         }
         return new String(majors);
@@ -290,13 +297,22 @@ public class Utils {
         }
     }
 
-    public static int getMajorAllele(double[][] profile, int i) {
-        int major = 0;
+    public static int getMajorAllele(double[][] profile, int i, String alphabet, boolean allowDeletion) {
+        int major = -1;
+        double majorFreq = 0;
         //don't count N
-        for (int j = 1; j < profile.length - 1; j++) {
-            if (profile[j][i] > profile[major][i]) {
-                major = j;
+        for (int j = 0; j < profile.length - 1; j++) {
+            if (!allowDeletion && j == alphabet.indexOf('-')){
+                continue;
             }
+            if (profile[j][i] > majorFreq) {
+                major = j;
+                majorFreq = profile[j][i];
+            }
+        }
+        // when there is no coverage or only deletions
+        if (major == -1){
+            return -1;
         }
         //in case there is no reads covering this position
         return profile[major][i] < 0.001 ? -1 : major;
@@ -314,17 +330,16 @@ public class Utils {
         return str.toString();
     }
 
-    public static double binomialPvalue(int s, double p, int n) {
+    public static double binomialOneMinusPvalue(int s, double p, int n) {
         return 1 - new BinomialDistribution(n, p).cumulativeProbability(s);
+    }
+
+    public static double binomialPvalue(int s, double p, int n) {
+        return new BinomialDistribution(n, p).cumulativeProbability(s);
     }
 
     public static double binomialLogPvalue(int s, double p, int n) {
         return -new BinomialDistribution(n, p).logProbability(s);
-    }
-
-    public static <T> Predicate<T> distinctByKey(Function<? super T, ?> keyExtractor) {
-        Map<Object, Boolean> seen = new ConcurrentHashMap<>();
-        return t -> seen.putIfAbsent(keyExtractor.apply(t), Boolean.TRUE) == null;
     }
 
     /**
@@ -333,8 +348,8 @@ public class Utils {
      * 0.001112 -> 0.00111
      * 0.000034394 -> 0.0000344
      *
-     * @param x
-     * @return
+     * @param x number to format
+     * @return formatted number
      */
     public static String smartDoubleToString(double x) {
         int i = 0;
@@ -406,4 +421,35 @@ public class Utils {
         }
         return c;
     }
+
+    public static List<DiffContainer> stringDifference(String x, String y){
+        return stringDifference(x,y,0, x.length());
+    }
+
+    public static List<DiffContainer> stringDifference(String x, String y, int from, int to){
+        List<DiffContainer> result = new ArrayList<>();
+        for (int i = from; i < to; i++) {
+            if (x.charAt(i) != y.charAt(i)){
+                result.add(new DiffContainer(i, x.charAt(i), y.charAt(i)));
+            }
+        }
+        return result;
+    }
+
+    public static class DiffContainer{
+        public int x;
+        public char first;
+        public char second;
+
+        public DiffContainer(int x, char first, char second){
+            this.x   = x;
+            this.first = first;
+            this.second = second;
+        }
+
+        public String toString(){
+            return x+" "+first+" "+second;
+        }
+    }
+
 }

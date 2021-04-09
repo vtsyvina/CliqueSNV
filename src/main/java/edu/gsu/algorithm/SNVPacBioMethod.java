@@ -32,7 +32,7 @@ public class SNVPacBioMethod extends AbstractSNV {
     private SNVStructure srcStruct;
     private double[][] profile;
     private String consensus;
-    private int[][] commonReads;
+    private final int[][] commonReads;
     private boolean isForImputation;
     // How many reads among all we assume to have bad quality
     public double READS_PORTION_TO_FILTER = 0.1;
@@ -45,10 +45,10 @@ public class SNVPacBioMethod extends AbstractSNV {
 
     /**
      * @param sample Given input reads with N in the beginning or end of read to make them all equal size
-     * @param log
+     * @param log    if log is enabled
      */
     public SNVPacBioMethod(Sample sample, boolean log) {
-        super(10, 0.05);
+
         this.sample = sample;
         this.log = log;
         commonReads = new int[sample.reads[0].length()][sample.reads[0].length()];
@@ -57,16 +57,19 @@ public class SNVPacBioMethod extends AbstractSNV {
                 commonReads[i][j] = -1;
             }
         }
+        sampleFragmentLength = sample.reads[0].length();
+        CLOSE_POSITIONS_THRESHOLD = 5;
+        initParameters(10, 0.05);
     }
 
     /**
      * @param sample       Given input reads with N in the beginning or end of read to make them all equal size
      * @param minThreshold threshold for O22 value to consider alleles as SNPs
      * @param minFreq      minimum frequency (relative to reads' coverage) for O22 value to consider alleles as SNP
-     * @param log
+     * @param log          if log is enabled
      */
     public SNVPacBioMethod(Sample sample, int minThreshold, double minFreq, boolean log) {
-        super(minThreshold, minFreq);
+
         this.sample = sample;
         this.log = log;
         commonReads = new int[sample.reads[0].length()][sample.reads[0].length()];
@@ -75,6 +78,9 @@ public class SNVPacBioMethod extends AbstractSNV {
                 commonReads[i][j] = -1;
             }
         }
+        sampleFragmentLength = sample.reads[0].length();
+        CLOSE_POSITIONS_THRESHOLD = 5;
+        initParameters(minThreshold, minFreq);
     }
 
     /**
@@ -97,7 +103,7 @@ public class SNVPacBioMethod extends AbstractSNV {
         log(" - DONE");
         log("Compute cliques");
         //run first time to get cliques
-        Set<Set<Integer>> cliques = run(srcStruct, sample);
+        List<Set<Integer>> cliques = run(srcStruct, sample);
         log(" - DONE");
 
         //remove bad reads( >23 mistakes outside of cliques positions)
@@ -125,10 +131,10 @@ public class SNVPacBioMethod extends AbstractSNV {
         }
         logSame("Start getting haplotypes");
         // divide by clusters and find haplotypes
-        List<SNVResultContainer> snvResultContainers = processCliques(cliques, srcStruct, sample);
+        List<SNVResultContainer> snvResultContainers = processCliques(cliques, sample);
         log(" - DONE");
         if (Start.settings.get("-ch").equals("true")) {
-            snvResultContainers = snvResultContainers.stream().filter(ha -> ha.frequency > HAPLOTYPE_CUT_THRESHOLD).sorted((s1, s2) -> -Double.compare(s1.frequency, s2.frequency)).collect(Collectors.toList());
+            snvResultContainers = filterHaplotypeFrequencies(snvResultContainers, HAPLOTYPE_CUT_THRESHOLD);
         }
         if (snvResultContainers.size() == 0) {
             snvResultContainers = getDefaultHaplotype();
@@ -151,7 +157,7 @@ public class SNVPacBioMethod extends AbstractSNV {
         log(" - DONE");
         logSame("Compute cliques");
         //run first time to get cliques
-        Set<Set<Integer>> cliques = run(srcStruct, sample);
+        List<Set<Integer>> cliques = run(srcStruct, sample);
         log(" - DONE");
         logSame("Remove reads with low quality ");
         //remove bad reads( >23 mistakes outside of cliques positions)
@@ -172,8 +178,8 @@ public class SNVPacBioMethod extends AbstractSNV {
         removeEdgesForSecondMinors(adjacencyList, srcStruct);
         log(" - DONE");
         //get haplotypes based on pure cliques, i.e. not merged.
-        cliques = AlgorithmUtils.findCliquesIgnoreIsolated(adjacencyList).stream().filter(c -> c.size() > 1).collect(Collectors.toSet());
-        List<SNVResultContainer> snvResultContainers = processCliques(cliques, srcStruct, sample);
+        cliques = AlgorithmUtils.findCliquesIgnoreIsolated(adjacencyList).stream().filter(c -> c.size() > 1).collect(Collectors.toList());
+        List<SNVResultContainer> snvResultContainers = processCliques(cliques, sample);
         //IntStream.range(0, adjacencyList.size()).filter(i -> adjacencyList.get(i).size() > 0).boxed().collect(Collectors.toSet())
         return getVCCliqie(snvResultContainers.stream().map(c -> c.haploClique).flatMap(cl -> cl.splittedSnps.stream()).collect(Collectors.toSet()),
                 TrueFrequencyEstimator.PACBIO_EPS);
@@ -246,8 +252,21 @@ public class SNVPacBioMethod extends AbstractSNV {
         if (p < 1E-12) {
             return 0;
         } else {
-            return USE_LOG_PVALUE ? Utils.binomialLogPvalue((int) os[3], p, (int) reads) : Utils.binomialPvalue((int) os[3], p, (int) reads);
+            return Utils.binomialOneMinusPvalue((int) os[3], p, (int) reads);
         }
+    }
+
+    @Override
+    public double getNonEndgeP(int i, int j) {
+        long[] os = getOs(i, j);
+        if (os[0] == 0) {
+            long tmp = os[0];
+            os[0] = os[3];
+            os[3] = tmp;
+        }
+        long reads = getCommonReadsCount(sample.reads.length, i, j, srcStruct.rowN[i / minorCount], srcStruct.rowN[j / minorCount]);
+        double p = NON_EDGE_T_FREQ;
+        return Utils.binomialPvalue((int) os[3], p, (int) reads);
     }
 
     @Override
@@ -281,7 +300,7 @@ public class SNVPacBioMethod extends AbstractSNV {
      * @param src    Source sample with given PacBio reads
      * @return Set of SNPs position for all found cliques
      */
-    private Set<Set<Integer>> run(SNVStructure struct, Sample src) {
+    private List<Set<Integer>> run(SNVStructure struct, Sample src) {
         computeCommonReads();
         List<Set<Integer>> adjacencyList = getUnprocessedSnpsAdjecencyList(src.reads[0].length() * minorCount, struct, src);
 
@@ -352,7 +371,7 @@ public class SNVPacBioMethod extends AbstractSNV {
                     if (hasO22Edge(o11, o12, o21, o22, reads, 0.0000001, src.reads[0].length())) {
                         log(String.format("%d %d %c %c m1=%d m2=%d hits=%d p=%.3e %d %d %d %d",
                                 first, second, m1, m2, l, struct.rowMinors[j].length, hits[j],
-                                USE_LOG_PVALUE ? Utils.binomialLogPvalue((int) o22, p, (int) reads) : Utils.binomialPvalue((int) o22, p, (int) reads),
+                                Utils.binomialOneMinusPvalue((int) o22, p, (int) reads),
                                 o11, o12, o21, o22));
                         adjacencyList.get(i).add(j);
                     }
@@ -445,14 +464,13 @@ public class SNVPacBioMethod extends AbstractSNV {
      * Methods process computed cliques. At first it separate reads into clusters and then compute consensus for each cluster and some additional information
      *
      * @param cliques Set of cliques in form of splitted SNPs(where position and minor are encoded in a single number)
-     * @param struct  SNV structure
      * @param src     Source sample
      * @return Set of containers with results. Each container contains haplotype itself and some additional helpful information
      */
-    private List<SNVResultContainer> processCliques(Set<Set<Integer>> cliques, SNVStructure struct, Sample src) {
+    private List<SNVResultContainer> processCliques(List<Set<Integer>> cliques, Sample src) {
         cliques.add(new HashSet<>());
         List<Integer> allPositionsInCliques = cliques.stream().flatMap(s -> s.stream().map(c -> c / minorCount)).distinct().sorted().collect(Collectors.toList());
-        List<String> allCliquesCharacters = getAllCliquesCharacters(struct, cliques, allPositionsInCliques);
+        List<String> allCliquesCharacters = getAllCliquesCharacters(cliques, allPositionsInCliques);
 
         Set<Clique> cliquesSet = new HashSet<>();
         cliques.forEach(c -> cliquesSet.add(new Clique(c, consensus())));
@@ -462,7 +480,7 @@ public class SNVPacBioMethod extends AbstractSNV {
         List<SNVResultContainer> haplotypes = clustersRelative.entrySet().stream().filter(s -> s.getValue().size() > MINIMUM_READS_NUMBER_IN_CLUSTER).map(c -> {
             String[] reads = c.getValue().stream().map(e -> sample.reads[e.getKey()]).toArray(String[]::new);
             // the number of cliques in which each read goes
-            int[] splitPortions = c.getValue().stream().mapToInt(e -> e.getValue()).toArray();
+            int[] splitPortions = c.getValue().stream().mapToInt(Pair::getValue).toArray();
             Sample tmpSample = new Sample("tmp", reads);
             double[][] profile = Utils.profile(tmpSample, splitPortions, al);
             String haplotype = Utils.consensus(profile, al);
@@ -477,7 +495,7 @@ public class SNVPacBioMethod extends AbstractSNV {
             Set<Integer> snps = new HashSet<>();
             for (int i = 0; i < haplotype.length(); i++) {
                 if (haplotype.charAt(i) != consensus().charAt(i)) {
-                    snps.add(splittedPosition(i, haplotype.charAt(i)));
+                    snps.add(splitPosition(i, haplotype.charAt(i)));
                 }
             }
             Clique haplotypeClique = new Clique(snps, consensus());
@@ -583,77 +601,6 @@ public class SNVPacBioMethod extends AbstractSNV {
                 int finalReadIndex = readIndex;
                 List<Integer> finalMinI = minI;
                 minI.forEach(i -> clusters.get(allCliquesCharacters.get(i)).add(new Pair<>(finalReadIndex, finalMinI.size())));
-            }
-        }
-        return clusters;
-    }
-
-    /**
-     * Build read clusters based on cliques. Each read will go to nearest clique in terms of Hamming distance
-     *
-     * @param src                   Source sample
-     * @param allPositionsInCliques sorted array or all positions with at least one clique
-     * @param allCliquesCharacters  characters in cliques according to allPositionsInCliques.
-     *                              Has consensus allele if clique doesn't include particular position from allPositionsInCliques
-     * @return Map with clusters, where key is string of clique characters, value is a set of reads
-     */
-    private Map<String, Map<Integer, String>> buildClusters(Sample src, List<Integer> allPositionsInCliques, List<String> allCliquesCharacters) {
-        Map<String, Map<Integer, String>> clusters = new HashMap<>();
-        allCliquesCharacters.forEach(s -> clusters.put(s, new HashMap<>()));
-
-        //dirty hack to find consensus clique since it should be processed separately
-        String consensusClique = "";
-        for (String characters : allCliquesCharacters) {
-            boolean fl = true;
-            for (int i = 0; i < characters.length(); i++) {
-                if (characters.charAt(i) != consensus().charAt(allPositionsInCliques.get(i))) {
-                    fl = false;
-                    break;
-                }
-            }
-            if (fl) {
-                consensusClique = characters;
-            }
-        }
-        // put all reads to appropriate container (Voronoi regions)
-        String[] reads = src.reads;
-        for (int readIndex = 0; readIndex < reads.length; readIndex++) {
-            String s = reads[readIndex];
-            List<Integer> minI = new ArrayList<>();
-            int min = 1_000_000;
-            for (int i = 0; i < allCliquesCharacters.size(); i++) {
-                String c = allCliquesCharacters.get(i);
-                int d = 0;
-                int coincidences = 0;
-                boolean isConsensusClique = c.equals(consensusClique);
-                for (int j = 0; j < allPositionsInCliques.size(); j++) {
-                    char charAtPosition = s.charAt(allPositionsInCliques.get(j));
-                    if (charAtPosition == 'N') {
-                        continue;
-                    }
-                    if (charAtPosition != c.charAt(j)) {
-                        d++;
-                    }
-                    //coincidence with current clique
-                    if (c.charAt(j) != consensus().charAt(allPositionsInCliques.get(j))) {
-                        coincidences++;
-                    }
-                    //coincidence with any cluque snp. Only for consensus clique
-                    if (isConsensusClique) {
-                        coincidences++;
-                    }
-                }
-                if (coincidences != d && d < min && coincidences > 0) {
-                    min = d;
-                    minI = new ArrayList<>();
-                }
-                if (d == min && coincidences > 0) {
-                    minI.add(i);
-                }
-            }
-            if (!minI.isEmpty()) {
-                int finalReadIndex = readIndex;
-                minI.forEach(i -> clusters.get(allCliquesCharacters.get(i)).put(finalReadIndex, s));
             }
         }
         return clusters;
