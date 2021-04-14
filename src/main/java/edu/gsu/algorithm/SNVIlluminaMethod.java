@@ -341,9 +341,9 @@ public class SNVIlluminaMethod extends AbstractSNV {
         // calculate haplotypes for different edge frequency limits
         // so that we will make sure that higher frequency haplotypes won't be contaminated with the noise
         double[] edgesLimit =  new double[0];//{0.1, 0.05, 0.01}; for now we don't want to have thise correction in any case
-        if (Start.settings.get("-fc").equals("false")) {
-            edgesLimit = new double[0];
-        }
+//        if (Start.settings.get("-fc").equals("false")) {
+//            edgesLimit = new double[0];
+//        }
         List<SNVResultContainer> totalResults = new ArrayList<>();
         log("Haplotypes before " + snvResultContainers.size());
         //outputAnswerChecking(snvResultContainers);
@@ -398,9 +398,9 @@ public class SNVIlluminaMethod extends AbstractSNV {
         log("Freq before filtering" + Arrays.toString(freq));
 
         log("Freq before second filtering" + Arrays.toString(freq));
-        if (Start.settings.get("-ch").equals("true")) {
-            totalResults = filterHaplotypeFrequencies(totalResults, HAPLOTYPE_CUT_THRESHOLD / 2);
-        }
+        //if (Start.settings.get("-ch").equals("true")) {
+        totalResults = filterHaplotypeFrequencies(totalResults, HAPLOTYPE_CUT_THRESHOLD / 2);
+        //}
         List<SNVResultContainer> filteredRecombinations = new ArrayList<>();
         Set<Set<Integer>> existingHaplotypes = new HashSet<>();
         //proccessing window start and end
@@ -1179,7 +1179,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
         int[] fragmentCount = new int[sample.referenceLength];
         for (PairEndRead read : sample.reads) {
             if (read.rOffset != -1) {
-                int length = read.rOffset + read.r.length() - read.lOffset;
+                int length = Math.min(sample.referenceLength-1, read.rOffset + read.r.length() - read.lOffset);
                 fragmentCount[length]++;
             } else {
                 fragmentCount[read.l.length()]++;
@@ -1193,7 +1193,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                 return i;
             }
         }
-        return 0;
+        return sample.referenceLength-1;
     }
 
     /**
