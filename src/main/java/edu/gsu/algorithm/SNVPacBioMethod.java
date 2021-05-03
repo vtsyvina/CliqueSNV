@@ -108,7 +108,7 @@ public class SNVPacBioMethod extends AbstractSNV {
 
         //remove bad reads( >23 mistakes outside of cliques positions)
         List<Integer> allPositionsInCliques = cliques.stream().flatMap(s -> s.stream().map(c -> c / 4)).distinct().sorted().collect(Collectors.toList());
-        if (!isForImputation) {
+        if (!isForImputation && "true".equals(Start.settings.getOrDefault("-lowQFilter", "true"))) {
             logSame("Remove reads with low quality ");
             Sample newSample = getFilteredSample(allPositionsInCliques);
             log(" - DONE");
@@ -133,9 +133,9 @@ public class SNVPacBioMethod extends AbstractSNV {
         // divide by clusters and find haplotypes
         List<SNVResultContainer> snvResultContainers = processCliques(cliques, sample);
         log(" - DONE");
-        if (Start.settings.get("-ch").equals("true")) {
+        //if (Start.settings.get("-ch").equals("true")) {
             snvResultContainers = filterHaplotypeFrequencies(snvResultContainers, HAPLOTYPE_CUT_THRESHOLD);
-        }
+        //}
         if (snvResultContainers.size() == 0) {
             snvResultContainers = getDefaultHaplotype();
             Start.errorCode = 5;

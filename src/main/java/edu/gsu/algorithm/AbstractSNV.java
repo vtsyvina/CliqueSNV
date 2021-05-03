@@ -833,6 +833,10 @@ public abstract class AbstractSNV {
         this.log = log;
     }
 
+    public double getTfParameter(){
+        return MIN_O22_FREQ;
+    }
+
     enum Technology {
         PACBIO, ILLUMINA
     }

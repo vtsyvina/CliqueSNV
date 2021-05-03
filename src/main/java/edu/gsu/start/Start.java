@@ -42,7 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class Start {
     public static final int DEFAULT_TIMEOUT = 3600 * 3;
     public static String errorMessage = "none";
-    // 1 - too much cliques; 2 - average clique degree is too high; 3 - too many cliques of cliques; 4 - timeout reached; 5 all haplotypes are of too low frequency
+    // 1 - too much cliques; 2 - average clique degree is too high; 3 - too many cliques of cliques; 4 - timeout reached; 5 - all haplotypes are of too low frequency, 6 - runtime error
     public static int errorCode = 0;
     private static boolean log;
     public static Map<String, String> settings = new HashMap<>();
@@ -146,6 +146,7 @@ public class Start {
             e.printStackTrace();
             if (errorMessage.equals("none")) {
                 errorMessage = "Runtime error";
+                errorCode = 6;
             }
             haplotypes = snvIlluminaMethod.getDefaultHaplotype();
         } catch (TimeoutException e) {

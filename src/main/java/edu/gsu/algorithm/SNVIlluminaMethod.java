@@ -53,7 +53,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
         return Technology.ILLUMINA;
     }
 
-    private final IlluminaSNVSample sample;
+    public final IlluminaSNVSample sample;
     private SNVStructure struct;
     private double[][] profile;
     private String consensus;
@@ -154,6 +154,9 @@ public class SNVIlluminaMethod extends AbstractSNV {
 
         log("Compute cliques");
         sampleFragmentLength = calculateFragmentLength();
+        if (Start.settings.containsKey("-fl")){
+            sampleFragmentLength = Start.tryParseInt(Start.settings.get("-fl"), sampleFragmentLength);
+        }
         log("Fragment length is " + sampleFragmentLength);
         int workingWindowSize = sampleFragmentLength;
         MAX_EDGES_NUMBER = 1_000_000; // we want to capture all the edges
@@ -193,8 +196,8 @@ public class SNVIlluminaMethod extends AbstractSNV {
         int processedWindowEnd = mostCoveredPosition;
         // extend the processed window gradually
         while (processedWindowStart > START_POSITION || processedWindowEnd < END_POSITION) {
-            int leftCoverage = processedWindowStart - workingWindowSize < 0 ? 0 : struct.readsAtPosition[processedWindowStart - workingWindowSize].length;
-            int rightCoverage = processedWindowEnd + workingWindowSize > sample.referenceLength ? 0 : struct.readsAtPosition[processedWindowEnd + workingWindowSize].length;
+            int leftCoverage = processedWindowStart - workingWindowSize < START_POSITION ? START_POSITION : struct.readsAtPosition[processedWindowStart - workingWindowSize].length;
+            int rightCoverage = processedWindowEnd + workingWindowSize > END_POSITION ? END_POSITION : struct.readsAtPosition[processedWindowEnd + workingWindowSize].length;
             boolean extendLeft = extendLeft(leftCoverage, rightCoverage, processedWindowStart, processedWindowEnd);
             if (extendLeft) { // extend to where we see higher coverage
                 processedWindowStart -= workingWindowSize;
@@ -269,7 +272,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
             }
             outputAnswerChecking(totalResults, processedWindowStart, processedWindowEnd);
             log("Processed window [" + processedWindowStart + ", " + processedWindowEnd + "] window [" + workingWindowStart + ", " + workingWindowEnd + "] " + (extendLeft ? " extend left" : " extend right"));
-            log("Haplo cliques ("+totalResults.stream()+")");
+            //log("Haplo cliques ("+totalResults.stream().+")");
             totalResults.forEach(t -> log(t.haploClique.toString()));
             log("");
         }
@@ -1176,7 +1179,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
      * @return fragment length
      */
     protected int calculateFragmentLength() {
-        int[] fragmentCount = new int[sample.referenceLength];
+        int[] fragmentCount = new int[sample.referenceLength+1];
         for (PairEndRead read : sample.reads) {
             if (read.rOffset != -1) {
                 int length = Math.min(sample.referenceLength-1, read.rOffset + read.r.length() - read.lOffset);
