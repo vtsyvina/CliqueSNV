@@ -26,10 +26,10 @@ There are several available parameters:
 - ``-m`` mandatory parameter to specify method that you want to run. There are 4 posible values:
   - 'snv-pacbio' - run CliqueSNV with PacBio input
   - 'snv-illumina' - run CliqueSNV with Illumina input
-  - 'snv-pacbio-vc' - run Variant Calling with CliqueSNV with PacBio input(.vcf file is output)
-  - 'snv-illumina-vc' - run Variant Calling with CliqueSNV with Illumina input(.vcf file is output)
+  - 'snv-pacbio-vc' - run Variant Calling with CliqueSNV with PacBio input (.vcf file is output)
+  - 'snv-illumina-vc' - run Variant Calling with CliqueSNV with Illumina input (.vcf file is output)
+  - 'consensus-pacbio' - just a utility method to calculate consensus string base of input sam file for PacBio reads
   - 'consensus-illumina' - just a utility method to calculate consensus string base of input sam file for Illumina reads
-  - 'consensus-pacbio' - just a utility method to calculate consensus string base of input sam file for Illumina reads
   
 - ``-in`` input path. If not specified default sam files from ``data\PacBio_reads`` ro ``data\Illumina_reads`` folder will be used.
   It can be relative as well as absolute path. Illumina requires .sam file for both haplotyping and VC, PacBio can read
