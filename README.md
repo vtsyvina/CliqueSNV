@@ -10,7 +10,9 @@ Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQw
 It will create `clique-snv.jar` in the root folder
 
 ## Citation
-Please cite preprint at BioRxiv: https://www.biorxiv.org/content/10.1101/264242v1
+Knyazev S, Tsyvina V, Shankar A, Melnyk A, Artyomenko A, Malygina T, Porozov YB, Campbell EM, Switzer WM, Skums P, Mangul S, Zelikovsky A. Accurate assembly of minority viral haplotypes from next-generation sequencing through efficient noise reduction. Nucleic Acids Res. 2021 Jul 2:gkab576. doi: 10.1093/nar/gkab576. Epub ahead of print. PMID: 34214168.
+
+https://pubmed.ncbi.nlm.nih.gov/34214168/
 
 ## Stable releases
 1.4.1 - <a href="https://drive.google.com/file/d/18rVFT6fSSBdvHyPw0aibmlp3CfOsLV3K/view?usp=sharing">12 February 2018</a>
@@ -24,10 +26,10 @@ There are several available parameters:
 - ``-m`` mandatory parameter to specify method that you want to run. There are 4 posible values:
   - 'snv-pacbio' - run CliqueSNV with PacBio input
   - 'snv-illumina' - run CliqueSNV with Illumina input
-  - 'snv-pacbio-vc' - run Variant Calling with CliqueSNV with PacBio input(.vcf file is output)
-  - 'snv-illumina-vc' - run Variant Calling with CliqueSNV with Illumina input(.vcf file is output)
+  - 'snv-pacbio-vc' - run Variant Calling with CliqueSNV with PacBio input (.vcf file is output)
+  - 'snv-illumina-vc' - run Variant Calling with CliqueSNV with Illumina input (.vcf file is output)
+  - 'consensus-pacbio' - just a utility method to calculate consensus string base of input sam file for PacBio reads
   - 'consensus-illumina' - just a utility method to calculate consensus string base of input sam file for Illumina reads
-  - 'consensus-pacbio' - just a utility method to calculate consensus string base of input sam file for Illumina reads
   
 - ``-in`` input path. If not specified default sam files from ``data\PacBio_reads`` ro ``data\Illumina_reads`` folder will be used.
   It can be relative as well as absolute path. Illumina requires .sam file for both haplotyping and VC, PacBio can read
