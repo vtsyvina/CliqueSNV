@@ -166,8 +166,14 @@ public class FindIlluminaEdgesParallelTask implements Callable<List<FindIllumina
                 }
             }
         }
-        method.log(String.format("%d %d %c %c m1=%s\tm2=%s\to22=%s\tp012=%f\tr=%d\t%d\t%d\t%d\t%d",
-                first, second, m1, m2, humanReadableSI(l), humanReadableSI(struct.rowMinors[j].length), humanReadableSI(hits[j]), 0.0, reads, o11, o12, o21, o22));
+        method.log(String.format("%d %d %c %c mi1=%s\tma1=%s\tmi2=%s\tma2=%s\tpO=%f\tr=%d\t%d\t%d\t%d\t%d\t%b\t%f",
+                            first, second, m1, m2, humanReadableSI(l), humanReadableSI(struct.majorsInRow[first]),
+                            humanReadableSI(struct.rowMinors[j].length), humanReadableSI(struct.majorsInRow[second]),
+                            0.0,
+                            reads, o11, o12, o21, o22, fl,
+                            (o22 / (method.MAX_READ_ERROR * o11 + (1 - method.MAX_READ_ERROR) * (o12 + o21)))
+                            )
+                    );
         //correlationMap.put(getCorrelationKey(first, second, m1, m2), new CorrelationContainer(o11, o12, o21, o22, reads));
         double freq = o22 * 1. / commonReads[first][second];
         double p = (o12 * o21) / ((double) o11 * reads);

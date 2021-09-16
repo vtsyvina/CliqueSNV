@@ -309,7 +309,7 @@ public class SNVPacBioMethod extends AbstractSNV {
          *   then we delete edge with less frequency of second allele(to avoid false positive cliques)
          */
         removeEdgesForSecondMinors(adjacencyList, struct);
-        log("Edges found " + adjacencyList.stream().mapToInt(Set::size).sum());
+        log("Edges found " + adjacencyList.stream().mapToInt(Set::size).sum()/2);
         return getMergedCliques(adjacencyList);
 
     }

@@ -151,10 +151,13 @@ public class SNVIlluminaMethod extends AbstractSNV {
         log(" - DONE " + (System.currentTimeMillis() - start));
         int mostCoveredPosition = mostCoveredPosition();
         log("Most covered position is " + mostCoveredPosition + " with coverage " + struct.readsAtPosition[mostCoveredPosition].length);
-
+        readAnswerHaplotypes();
         log("Compute cliques");
         sampleFragmentLength = calculateFragmentLength();
-        if (Start.settings.containsKey("-fl")){
+        if (sampleFragmentLength > 0.8 * (END_POSITION-START_POSITION)) {
+            sampleFragmentLength = sample.referenceLength;
+        }
+        if (Start.settings.containsKey("-fl")) {
             sampleFragmentLength = Start.tryParseInt(Start.settings.get("-fl"), sampleFragmentLength);
         }
         log("Fragment length is " + sampleFragmentLength);
@@ -169,7 +172,13 @@ public class SNVIlluminaMethod extends AbstractSNV {
             Set<String> FNedges = new HashSet<>();
             for (Clique clique : answer) {
                 for (Integer i : clique.splittedSnps) {
+                    if (i / minorCount < START_POSITION || i / minorCount > END_POSITION) {
+                        continue;
+                    }
                     for (Integer j : clique.splittedSnps) {
+                        if (j / minorCount < START_POSITION || j / minorCount > END_POSITION) {
+                            continue;
+                        }
                         if (i >= j || (j - i) / minorCount > sampleFragmentLength) {
                             continue;
                         }
@@ -178,7 +187,8 @@ public class SNVIlluminaMethod extends AbstractSNV {
                         }
                         if (!FNedges.contains(i + "_" + j) && !fullAdjacencyList.get(i).contains(j)) {
                             FNedges.add(i + "_" + j);
-                            log(i / minorCount + " " + j / minorCount + " " + al.charAt(getAllele(i)) + " " + al.charAt(getAllele(j)) + Arrays.toString(getOs(i, j)) + " " + getP(i, j));
+                            int reads = commonReads[i / minorCount][j / minorCount];
+                            log(i / minorCount + " " + j / minorCount + " " + al.charAt(getAllele(i)) + " " + al.charAt(getAllele(j)) + Arrays.toString(getOs(i, j)) + " " + getP(i, j)+ ((double)getOs(i, j)[3]/reads));
                         }
                         if (Start.settings.containsKey("-addFnedges")) {
                             fullAdjacencyList.get(i).add(j);
@@ -283,10 +293,11 @@ public class SNVIlluminaMethod extends AbstractSNV {
 
     /**
      * Checks if the window should be extended left or right
-     * @param leftCoverage coverage on the left position candidate to extend
-     * @param rightCoverage coverage on the right position candidate to extend
+     *
+     * @param leftCoverage         coverage on the left position candidate to extend
+     * @param rightCoverage        coverage on the right position candidate to extend
      * @param processedWindowStart already processed start position
-     * @param processedWindowEnd already processed end position
+     * @param processedWindowEnd   already processed end position
      * @return true if we should extend left, false otherwise
      */
     private boolean extendLeft(int leftCoverage, int rightCoverage, int processedWindowStart, int processedWindowEnd) {
@@ -299,7 +310,8 @@ public class SNVIlluminaMethod extends AbstractSNV {
 
     /**
      * Checks if split position belongs to any haplotye
-     * @param position split position
+     *
+     * @param position   split position
      * @param haplotypes a list of haplotypes
      * @return true if the position is present in at least on of the haplotypes
      */
@@ -343,7 +355,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
 
         // calculate haplotypes for different edge frequency limits
         // so that we will make sure that higher frequency haplotypes won't be contaminated with the noise
-        double[] edgesLimit =  new double[0];//{0.1, 0.05, 0.01}; for now we don't want to have thise correction in any case
+        double[] edgesLimit = new double[0];//{0.1, 0.05, 0.01}; for now we don't want to have thise correction in any case
 //        if (Start.settings.get("-fc").equals("false")) {
 //            edgesLimit = new double[0];
 //        }
@@ -644,6 +656,10 @@ public class SNVIlluminaMethod extends AbstractSNV {
             tasks.add(new FindIlluminaEdgesParallelTask(struct, i, this, sample, commonReads, Start.settings.containsKey("-ignoreDeletion")));
         }
         List<FindIlluminaEdgesParallelTask.EdgeSummary> allEdges = new ArrayList<>();
+        boolean oldLog = log;
+        if (Start.settings.containsKey("-noSNPlog")) {
+            log = false;
+        }
         try {
             List<Future<List<FindIlluminaEdgesParallelTask.EdgeSummary>>> futures = Start.executor.invokeAll(tasks);
             for (Future<List<FindIlluminaEdgesParallelTask.EdgeSummary>> future : futures) {
@@ -652,9 +668,14 @@ public class SNVIlluminaMethod extends AbstractSNV {
         } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
         }
+        if (Start.settings.containsKey("-noSNPlog")) {
+            log = oldLog;
+        }
         log("Total edges before filtering " + allEdges.size());
         List<Set<Integer>> adjacencyList = convertEdgesIntoAdjacencyList(allEdges);
-        addDeletionEdges(adjacencyList);
+        if (!Start.settings.containsKey("-ignoreDeletion")){
+            addDeletionEdges(adjacencyList);
+        }
         noLimitEdges = allEdges;
         removeEdgesForSecondMinors(adjacencyList, struct);
         return adjacencyList;
@@ -1179,10 +1200,10 @@ public class SNVIlluminaMethod extends AbstractSNV {
      * @return fragment length
      */
     protected int calculateFragmentLength() {
-        int[] fragmentCount = new int[sample.referenceLength+1];
+        int[] fragmentCount = new int[sample.referenceLength + 1];
         for (PairEndRead read : sample.reads) {
             if (read.rOffset != -1) {
-                int length = Math.min(sample.referenceLength-1, read.rOffset + read.r.length() - read.lOffset);
+                int length = Math.min(sample.referenceLength - 1, read.rOffset + read.r.length() - read.lOffset);
                 fragmentCount[length]++;
             } else {
                 fragmentCount[read.l.length()]++;
@@ -1196,7 +1217,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                 return i;
             }
         }
-        return sample.referenceLength-1;
+        return sample.referenceLength - 1;
     }
 
     /**
@@ -1205,7 +1226,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
      * @return median most covered position
      */
     private int mostCoveredPosition() {
-        int maxCoverege = Arrays.stream(struct.readsAtPosition).mapToInt(r -> r.length).max().getAsInt();
+        int maxCoverege = Arrays.stream(struct.readsAtPosition).skip(START_POSITION).limit(END_POSITION - START_POSITION + 1).mapToInt(r -> r.length).max().getAsInt();
         int[] maxCoveragePositions = IntStream.range(0, struct.readsAtPosition.length).filter(i -> struct.readsAtPosition[i].length == maxCoverege).toArray();
         return maxCoveragePositions[maxCoveragePositions.length / 2];
     }

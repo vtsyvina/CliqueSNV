@@ -67,6 +67,7 @@ public abstract class AbstractSNV {
         this.END_POSITION = Math.min(consensus().length() - 1, Integer.parseInt(Start.settings.getOrDefault("-ep", "1000000")));
         this.NON_EDGE_T_FREQ = Double.parseDouble(Start.settings.getOrDefault("-net", Double.toString(MIN_O22_FREQ)));
         this.NON_EDGE_T_FREQ = Math.max(NON_EDGE_T_FREQ, 0.01); // TODO think too low -tf will give a lot FN non-edges - all cliques will merge
+        this.CLOSE_POSITIONS_THRESHOLD = Start.settings.containsKey("-cpt") ? Integer.parseInt(Start.settings.get("-cpt")) : CLOSE_POSITIONS_THRESHOLD;
     }
 
     /**
@@ -130,7 +131,9 @@ public abstract class AbstractSNV {
      */
     int splitPosition(int pos, char minor) {
         int r = pos * minorCount;
-        int allele = al.indexOf(minor) >= Utils.getMajorAllele(consensus(), al, pos) ? al.indexOf(minor) - 1 : al.indexOf(minor);
+        // or is for a rare case when the consensus has N in the end and otherwise it will cause OutOfBoundException
+        int allele = al.indexOf(minor) >= Utils.getMajorAllele(consensus(), al, pos)
+                || (pos == consensus().length() - 1 && consensus().charAt(pos) == 'N') ? al.indexOf(minor) - 1 : al.indexOf(minor);
         return r + allele;
     }
 
@@ -359,12 +362,14 @@ public abstract class AbstractSNV {
     void readAnswerHaplotypes() {
         if (Start.answer != null) {
             answer = new ArrayList<>();
+            int l = Math.min(consensus().length(), Start.answer.reads[0].length());
             for (String sequence : Start.answer.reads) {
                 Set<Integer> tmp = new HashSet<>();
-                for (int i = 0; i < consensus().length(); i++) {
-                    if (sequence.charAt(i)
+                for (int i = 0; i < l; i++) {
+                    char answerChar = i >= sequence.length() ? '-' : sequence.charAt(i);
+                    if (answerChar
                             != consensus().charAt(i)) {
-                        tmp.add(splitPosition(i, sequence.charAt(i)));
+                        tmp.add(splitPosition(i, answerChar));
                     }
 
                 }
@@ -372,6 +377,8 @@ public abstract class AbstractSNV {
             }
             log("Answer:");
             if (log) answer.forEach(System.out::println);
+            log(START_POSITION + " " + END_POSITION);
+            if (log) answer.forEach(c -> System.out.println(c.toString(START_POSITION, END_POSITION)));
             log("");
         }
     }
@@ -399,12 +406,12 @@ public abstract class AbstractSNV {
                         }
                     }
                     if (min == 0) {
-                        log("Found haplotype " + Utils.smartDoubleToString(snvResultContainers.get(minI).frequency) + " for " + answer.get(i));
+                        log("Found haplotype " + Utils.smartDoubleToString(snvResultContainers.get(minI).frequency) + " for " + answer.get(i).toString(START_POSITION, END_POSITION));
                     } else {
-                        log("Failed to find haplotype for " + answer.get(i));
+                        log("Failed to find haplotype for " + answer.get(i).toString(startPosition, endPosition));
                         log(" closest is within " + min + " distance " + Utils.smartDoubleToString(snvResultContainers.get(minI).frequency) + " "
                                 + Utils.stringDifference(snvResultContainers.get(minI).haplotype, ans, startPosition, endPosition) + " "
-                                + snvResultContainers.get(minI).haploClique);
+                                + snvResultContainers.get(minI).haploClique.toString(startPosition, endPosition));
                         log(" clique " + snvResultContainers.get(minI).sourceClique);
                     }
                 }
@@ -833,7 +840,7 @@ public abstract class AbstractSNV {
         this.log = log;
     }
 
-    public double getTfParameter(){
+    public double getTfParameter() {
         return MIN_O22_FREQ;
     }
 

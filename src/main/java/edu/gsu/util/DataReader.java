@@ -189,8 +189,8 @@ public class DataReader {
         public List<PairEndRead> call() {
             List<PairEndRead> pairedReads = new ArrayList<>(readsSet.size());
             readsSet.forEach((key, value) -> {
-                if (pairedReads.size() % 200_000 == 0) {
-                    System.out.print("\r" + counter.addAndGet(200_000));
+                if (pairedReads.size() % 100_000 == 0 && pairedReads.size() > 0) {
+                    System.out.print("\r" + counter.addAndGet(100_000));
                 }
                 if (value.size() == 1) {
                     String s = sam4WebLogo.printRead(value.get(0), true);

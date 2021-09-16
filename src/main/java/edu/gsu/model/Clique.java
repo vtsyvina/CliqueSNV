@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class Clique {
     public String minors;
@@ -50,6 +51,23 @@ public class Clique {
     @Override
     public String toString() {
         return minors + snps;
+    }
+
+    public String toString(int start, int end){
+        int s = 0, e = snps.size();
+        for (int i = 0; i < snps.size(); i++) {
+            if (snps.get(i) < start){
+                s++;
+            }
+            if (snps.get(i) <= end && (i == snps.size()-1 || snps.get(i+1) > end)){
+                e = i;
+                break;
+            }
+        }
+        if (e == 0){
+            return "[]";
+        }
+        return minors.substring(s,e+1)+snps.stream().skip(s).limit(e-s+1).collect(Collectors.toList());
     }
 
     @Override
