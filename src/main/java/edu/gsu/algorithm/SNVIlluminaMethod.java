@@ -206,8 +206,8 @@ public class SNVIlluminaMethod extends AbstractSNV {
         int processedWindowEnd = mostCoveredPosition;
         // extend the processed window gradually
         while (processedWindowStart > START_POSITION || processedWindowEnd < END_POSITION) {
-            int leftCoverage = processedWindowStart - workingWindowSize < START_POSITION ? START_POSITION : struct.readsAtPosition[processedWindowStart - workingWindowSize].length;
-            int rightCoverage = processedWindowEnd + workingWindowSize > END_POSITION ? END_POSITION : struct.readsAtPosition[processedWindowEnd + workingWindowSize].length;
+            int leftCoverage = processedWindowStart - workingWindowSize < START_POSITION ? 0 : struct.readsAtPosition[processedWindowStart - workingWindowSize].length;
+            int rightCoverage = processedWindowEnd + workingWindowSize > END_POSITION ? 0 : struct.readsAtPosition[processedWindowEnd + workingWindowSize].length;
             boolean extendLeft = extendLeft(leftCoverage, rightCoverage, processedWindowStart, processedWindowEnd);
             if (extendLeft) { // extend to where we see higher coverage
                 processedWindowStart -= workingWindowSize;

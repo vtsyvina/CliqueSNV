@@ -430,9 +430,7 @@ public abstract class AbstractSNV {
 //        List<Set<Integer>> cliques = new ArrayList<>(newCliquesFinding(adjacencyList));
         List<Set<Integer>> cliques = AlgorithmUtils.findCliquesIgnoreIsolated(adjacencyList).stream().filter(c -> c.size() > 1).collect(Collectors.toList());
         if (log && cliques.size() < 300 && !cliques.isEmpty())
-            System.out.println("Found cliques:");
-        cliques.stream().map(c -> new Clique(c, consensus())).forEach(System.out::println);
-        System.out.println("End found cliques");
+            cliques.stream().map(c -> new Clique(c, consensus())).forEach(System.out::println);
         if (cliques.isEmpty()) {
             return new ArrayList<>();
         }
