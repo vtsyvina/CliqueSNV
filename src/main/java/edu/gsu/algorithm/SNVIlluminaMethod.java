@@ -286,7 +286,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
             totalResults.forEach(t -> log(t.haploClique.toString()));
             log("");
         }
-        //totalResults = filterHaplotypeFrequencies(totalResults, HAPLOTYPE_CUT_THRESHOLD);
+        totalResults = filterHaplotypeFrequencies(totalResults, HAPLOTYPE_CUT_THRESHOLD);
         outputAnswerChecking(totalResults, processedWindowStart, processedWindowEnd);
         return totalResults;
     }
