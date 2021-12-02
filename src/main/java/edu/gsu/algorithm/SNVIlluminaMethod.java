@@ -154,7 +154,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
         readAnswerHaplotypes();
         log("Compute cliques");
         sampleFragmentLength = calculateFragmentLength();
-        if (sampleFragmentLength > 0.8 * (END_POSITION-START_POSITION)) {
+        if (sampleFragmentLength > 0.8 * (END_POSITION - START_POSITION)) {
             sampleFragmentLength = sample.referenceLength;
         }
         if (Start.settings.containsKey("-fl")) {
@@ -188,7 +188,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                         if (!FNedges.contains(i + "_" + j) && !fullAdjacencyList.get(i).contains(j)) {
                             FNedges.add(i + "_" + j);
                             int reads = commonReads[i / minorCount][j / minorCount];
-                            log(i / minorCount + " " + j / minorCount + " " + al.charAt(getAllele(i)) + " " + al.charAt(getAllele(j)) + Arrays.toString(getOs(i, j)) + " " + getP(i, j)+ ((double)getOs(i, j)[3]/reads));
+                            log(i / minorCount + " " + j / minorCount + " " + al.charAt(getAllele(i)) + " " + al.charAt(getAllele(j)) + Arrays.toString(getOs(i, j)) + " " + getP(i, j) + ((double) getOs(i, j)[3] / reads));
                         }
                         if (Start.settings.containsKey("-addFnedges")) {
                             fullAdjacencyList.get(i).add(j);
@@ -673,7 +673,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
         }
         log("Total edges before filtering " + allEdges.size());
         List<Set<Integer>> adjacencyList = convertEdgesIntoAdjacencyList(allEdges);
-        if (!Start.settings.containsKey("-ignoreDeletion")){
+        if (!Start.settings.containsKey("-ignoreDeletion")) {
             addDeletionEdges(adjacencyList);
         }
         noLimitEdges = allEdges;
@@ -982,7 +982,7 @@ public class SNVIlluminaMethod extends AbstractSNV {
                 }
             }
             for (int i = 0; i < str.length(); i++) {
-                if (str.charAt(i) == 'N') {
+                if (str.charAt(i) == 'N' || i < START_POSITION || i > END_POSITION) {
                     str.setCharAt(i, consensus().charAt(i));
                 }
                 // some reads may be aligned wrongly or just have minor allele with tiny coverage(1-2 reads) that will give an SNP there

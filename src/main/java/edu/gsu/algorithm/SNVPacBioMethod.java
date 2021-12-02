@@ -134,7 +134,7 @@ public class SNVPacBioMethod extends AbstractSNV {
         List<SNVResultContainer> snvResultContainers = processCliques(cliques, sample);
         log(" - DONE");
         //if (Start.settings.get("-ch").equals("true")) {
-            snvResultContainers = filterHaplotypeFrequencies(snvResultContainers, HAPLOTYPE_CUT_THRESHOLD);
+        snvResultContainers = filterHaplotypeFrequencies(snvResultContainers, HAPLOTYPE_CUT_THRESHOLD);
         //}
         if (snvResultContainers.size() == 0) {
             snvResultContainers = getDefaultHaplotype();
@@ -309,7 +309,7 @@ public class SNVPacBioMethod extends AbstractSNV {
          *   then we delete edge with less frequency of second allele(to avoid false positive cliques)
          */
         removeEdgesForSecondMinors(adjacencyList, struct);
-        log("Edges found " + adjacencyList.stream().mapToInt(Set::size).sum()/2);
+        log("Edges found " + adjacencyList.stream().mapToInt(Set::size).sum() / 2);
         return getMergedCliques(adjacencyList);
 
     }
@@ -487,7 +487,7 @@ public class SNVPacBioMethod extends AbstractSNV {
             //rare case where all reads have N on a certain position
             StringBuilder str = new StringBuilder(haplotype);
             for (int i = 0; i < str.length(); i++) {
-                if (str.charAt(i) == 'N') {
+                if (str.charAt(i) == 'N' || i < START_POSITION || i > END_POSITION) {
                     str.setCharAt(i, consensus().charAt(i));
                 }
             }

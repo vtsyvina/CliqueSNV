@@ -1,9 +1,11 @@
 # CliqueSNV
 ## How to Run
 
-Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 2.0.2, May 2021)
+Download jar from <a href="https://drive.google.com/file/d/1wAC57YARnVKi5uGAtPQwEHqAaPO_ru1m/view?usp=sharing">here</a> (latest ver 2.0.3, December 2021)
 
 ## How to build
+
+*Only if you want to modify the program. Otherwise, use the jar file provided*
 
 `` mvn clean install``
 
@@ -20,6 +22,8 @@ https://pubmed.ncbi.nlm.nih.gov/34214168/
 1.4.11 - <a href="https://drive.google.com/open?id=1Qwg6g9_lKlqY9zrH37f-F1QF32fWOmYt">2 January 2020</a>
 
 1.5.3 - <a href="https://drive.google.com/file/d/1MZ-J0O6yxSoF9OZxD6DT6ChazvOZsUa-"> 1 June 2020</a>
+
+2.0.3 - <a href="https://drive.google.com/file/d/1CUwnGyPtpcKfPGoMmqaZsGLwufX8aSfa/view"> 2 December 2021</a>
 
 ## Parameters
 There are several available parameters:
@@ -300,6 +304,10 @@ the runtime on powerful machines
 - New "sliding window" approach in haplotypes reconstructing. More details above
 - Small changes to handle deletion regions better and SNPs on the edges of reads
 - "-fc", "-ch" - parameters not supported because of a new approach
+
+2.0.3
+- Fixed some bugs
+- If -sp,-ep specified the reads won't create SNPs outside the region when calculating haplotype
 
 ## Any questions
 With any questions. please, contact: v.tsyvina@gmail.com
