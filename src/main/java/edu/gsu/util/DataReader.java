@@ -38,21 +38,27 @@ public class DataReader {
         List<String> raw = Files.readAllLines(filePath);
         List<String> result = new ArrayList<>();
         StringBuilder seq = new StringBuilder();
+        List<String> readNames = new ArrayList<>();
         for (int j = 0; j < raw.size(); j++) {
             String str = raw.get(j);
-            if (str.startsWith(">") && seq.length() > 0 || str.length() == 0) {
+            if (j == 0) {
+                readNames.add(str.substring(1));
+            } else if (str.startsWith(">") && seq.length() > 0 || str.length() == 0) {
                 result.add(seq.toString());
                 seq.setLength(0);
+                readNames.add(str.substring(1));
             } else if (!str.startsWith(">")) {
                 seq.append(str);
-                //workaround for for cases when file doesn't contain last empty string
+                // workaround for for cases when file doesn't contain last empty string
                 if (j + 1 == raw.size()) {
                     result.add(seq.toString());
                 }
             }
         }
-        return new Sample(filePath.toFile().getName().replaceFirst("[.][^.]+$", ""), result.toArray(new String[0]));
+        return new Sample(filePath.toFile().getName().replaceFirst("[.][^.]+$", ""),
+                result.toArray(new String[0]), readNames.toArray(new String[0]));
     }
+
 
     /**
      * For imputation data
